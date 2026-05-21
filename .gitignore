@@ -1,0 +1,14 @@
+# Local runtime data
+xuhuohua_users.json
+douyin_cookies*.txt
+screenshots/
+douyin_*.png
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# macOS
+.DS_Store

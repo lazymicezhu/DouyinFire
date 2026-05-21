@@ -1,0 +1,4 @@
+selenium==4.10.0
+webdriver-manager==3.8.6
+schedule==1.2.0
+pyautogui==0.9.53 
