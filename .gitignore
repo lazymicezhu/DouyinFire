@@ -1,12 +1,16 @@
 # Local runtime data
 xuhuohua_users.json
 douyin_cookies*.txt
+config/douyinfire.yaml
+data/
+logs/
 screenshots/
 douyin_*.png
 
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 

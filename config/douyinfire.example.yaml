@@ -1,0 +1,18 @@
+# Copy this file to config/douyinfire.yaml and edit it locally.
+data_dir: data
+log_dir: logs
+screenshot_dir: screenshots
+headless: false
+failure_notify_threshold: 1
+
+schedule:
+  time: "00:05"
+  jitter_minutes: 20
+  min_contact_interval_seconds: 10
+
+users:
+  - name: "main"
+    enabled: true
+    contacts:
+      - "联系人昵称"
+    message: "续火花咯"

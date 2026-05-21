@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+DEFAULT_CONFIG_PATH = Path("config/douyinfire.yaml")
+DEFAULT_DATA_DIR = Path("data")
+DEFAULT_LOG_DIR = Path("logs")
+DEFAULT_SCREENSHOT_DIR = Path("screenshots")
+
+
+@dataclass(slots=True)
+class ScheduleConfig:
+    time: str = "00:05"
+    jitter_minutes: int = 20
+    min_contact_interval_seconds: int = 10
+
+
+@dataclass(slots=True)
+class UserConfig:
+    name: str
+    contacts: list[str]
+    message: str
+    enabled: bool = True
+
+
+@dataclass(slots=True)
+class AppConfig:
+    users: list[UserConfig]
+    schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
+    data_dir: Path = DEFAULT_DATA_DIR
+    log_dir: Path = DEFAULT_LOG_DIR
+    screenshot_dir: Path = DEFAULT_SCREENSHOT_DIR
+    failure_notify_threshold: int = 1
+    headless: bool = False
+
+    def user(self, name: str) -> UserConfig:
+        for user in self.users:
+            if user.name == name:
+                return user
+        raise ConfigError(f"User not found in config: {name}")
+
+    @property
+    def enabled_users(self) -> list[UserConfig]:
+        return [user for user in self.users if user.enabled]
+
+
+class ConfigError(ValueError):
+    """Raised when the DouyinFire config is missing or invalid."""
+
+
+def load_config(path: Path | str = DEFAULT_CONFIG_PATH) -> AppConfig:
+    config_path = Path(path)
+    if not config_path.exists():
+        raise ConfigError(f"Config file does not exist: {config_path}")
+
+    raw = _read_config_file(config_path)
+    return parse_config(raw, base_dir=config_path.parent.parent)
+
+
+def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AppConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("Config root must be an object")
+
+    users_raw = raw.get("users")
+    if not isinstance(users_raw, list) or not users_raw:
+        raise ConfigError("Config must contain at least one user")
+
+    users = [_parse_user(item, index) for index, item in enumerate(users_raw)]
+    schedule = _parse_schedule(raw.get("schedule", {}))
+    base = base_dir or Path(".")
+
+    return AppConfig(
+        users=users,
+        schedule=schedule,
+        data_dir=_path_from(raw.get("data_dir", str(DEFAULT_DATA_DIR)), base),
+        log_dir=_path_from(raw.get("log_dir", str(DEFAULT_LOG_DIR)), base),
+        screenshot_dir=_path_from(raw.get("screenshot_dir", str(DEFAULT_SCREENSHOT_DIR)), base),
+        failure_notify_threshold=_positive_int(raw.get("failure_notify_threshold", 1), "failure_notify_threshold", allow_zero=False),
+        headless=bool(raw.get("headless", False)),
+    )
+
+
+def ensure_runtime_dirs(config: AppConfig) -> None:
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    config.log_dir.mkdir(parents=True, exist_ok=True)
+    config.screenshot_dir.mkdir(parents=True, exist_ok=True)
+    (config.data_dir / "profiles").mkdir(parents=True, exist_ok=True)
+
+
+def write_example_config(path: Path | str = DEFAULT_CONFIG_PATH, overwrite: bool = False) -> Path:
+    config_path = Path(path)
+    if config_path.exists() and not overwrite:
+        raise ConfigError(f"Config already exists: {config_path}")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(EXAMPLE_CONFIG, encoding="utf-8")
+    return config_path
+
+
+def _read_config_file(path: Path) -> dict[str, Any]:
+    if path.suffix.lower() == ".json":
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ConfigError("PyYAML is required for YAML config files. Install requirements.txt first.") from exc
+
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return loaded or {}
+
+
+def _parse_user(raw: Any, index: int) -> UserConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError(f"User #{index + 1} must be an object")
+
+    name = _required_str(raw, "name", f"users[{index}]")
+    contacts = raw.get("contacts")
+    if not isinstance(contacts, list) or not contacts or not all(isinstance(item, str) and item.strip() for item in contacts):
+        raise ConfigError(f"users[{index}].contacts must be a non-empty list of strings")
+
+    message = _required_str(raw, "message", f"users[{index}]")
+    return UserConfig(
+        name=name,
+        contacts=[item.strip() for item in contacts],
+        message=message,
+        enabled=bool(raw.get("enabled", True)),
+    )
+
+
+def _parse_schedule(raw: Any) -> ScheduleConfig:
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ConfigError("schedule must be an object")
+
+    time_value = str(raw.get("time", "00:05"))
+    _validate_hhmm(time_value)
+    return ScheduleConfig(
+        time=time_value,
+        jitter_minutes=_positive_int(raw.get("jitter_minutes", 20), "schedule.jitter_minutes", allow_zero=True),
+        min_contact_interval_seconds=_positive_int(
+            raw.get("min_contact_interval_seconds", 10),
+            "schedule.min_contact_interval_seconds",
+            allow_zero=False,
+        ),
+    )
+
+
+def _path_from(value: Any, base: Path) -> Path:
+    path = Path(str(value)).expanduser()
+    if path.is_absolute():
+        return path
+    return base / path
+
+
+def _required_str(raw: dict[str, Any], key: str, prefix: str) -> str:
+    value = raw.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"{prefix}.{key} is required")
+    return value.strip()
+
+
+def _positive_int(value: Any, name: str, allow_zero: bool) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"{name} must be an integer") from exc
+    if number < 0 or (number == 0 and not allow_zero):
+        raise ConfigError(f"{name} must be greater than zero")
+    return number
+
+
+def _validate_hhmm(value: str) -> None:
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise ConfigError("schedule.time must use HH:MM format")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError as exc:
+        raise ConfigError("schedule.time must use HH:MM format") from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ConfigError("schedule.time must be a valid 24-hour time")
+
+
+EXAMPLE_CONFIG = """# Copy this file to config/douyinfire.yaml and edit it locally.
+data_dir: data
+log_dir: logs
+screenshot_dir: screenshots
+headless: false
+failure_notify_threshold: 1
+
+schedule:
+  time: "00:05"
+  jitter_minutes: 20
+  min_contact_interval_seconds: 10
+
+users:
+  - name: "main"
+    enabled: true
+    contacts:
+      - "联系人昵称"
+    message: "续火花咯"
+"""

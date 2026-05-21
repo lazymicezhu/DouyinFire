@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "douyinfire"
+version = "0.1.0"
+description = "Mac-local Douyin streak automation with Playwright, CLI, and launchd support."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright==1.60.0",
+    "typer==0.25.1",
+    "rich==14.3.4",
+    "PyYAML==6.0.1",
+]
+
+[project.scripts]
+douyinfire = "douyinfire.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["douyinfire*"]

@@ -1,93 +1,105 @@
-# 抖音自动续火花工具
+# DouyinFire
 
-项目优化中 20250629
+DouyinFire 是一个 Mac 本地运行的抖音续火花自动化工具。当前版本已经从早期的单文件 Selenium 脚本重构为 Playwright + CLI + 配置文件 + launchd 的结构，目标是低频、可控、可恢复地完成每日私信任务。
 
-抖音自动续火花工具是一个 Python 程序，可以帮助用户自动向指定的抖音好友发送私信，保持互动关系不断。该工具支持多用户配置，可设置定时任务，非常适合需要维持抖音社交关系的用户使用。
+> 本项目只面向个人账号的低频自用自动化，不提供验证码绕过、风控绕过或批量营销能力。
 
-## 功能特点
+## 功能
 
-- 🔄 **自动续火花**：定期向好友发送私信，保持互动
-- 👥 **多用户支持**：可配置多个不同用户账号
-- ⏰ **定时任务**：支持每天定时自动发送消息
-- 🍪 **Cookie 管理**：自动保存和使用登录信息
-- 📱 **批量发送**：可同时给多个联系人发送消息
-- 🔁 **重复执行**：支持指定次数重复发送
-- 📊 **操作日志**：详细记录每一步操作结果
+- Playwright persistent profile 保存每个用户的登录态
+- YAML 配置多用户、联系人、消息和每日执行时间
+- CLI 管理初始化、登录、立即运行、检查和服务安装
+- 每次运行生成 JSON 记录、日志和失败截图
+- 单联系人失败不会中断整批任务
+- 失败达到阈值时发送 macOS 本地通知
+- launchd 支持每天 `00:05` 唤醒运行
 
-## 安装依赖
-
-### 基本依赖
+## 安装
 
 ```bash
-pip install selenium webdriver-manager schedule pyautogui
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+pip install -e .
 ```
 
-### Mac 系统额外依赖
+## 初始化配置
 
 ```bash
-pip install python3-xlib
-brew install python-tk python-imaging
+douyinfire init
 ```
 
-## 使用方法
+这会生成 `config/douyinfire.yaml`。真实配置不会提交到 Git。也可以参考 `config/douyinfire.example.yaml`：
 
-1. 克隆或下载本仓库到本地
-2. 安装依赖
-3. 运行程序：`python xuhuohua.py`
-4. 按照菜单提示进行操作
+```yaml
+data_dir: data
+log_dir: logs
+screenshot_dir: screenshots
+headless: false
+failure_notify_threshold: 1
 
-### 初次使用
+schedule:
+  time: "00:05"
+  jitter_minutes: 20
+  min_contact_interval_seconds: 10
 
-1. 选择菜单中的 `5. 添加新用户`
-2. 输入用户名称、联系人列表和要发送的消息
-3. 选择是否立即登录，如果是，则会打开浏览器引导你登录抖音
-4. 登录成功后会自动保存 Cookie，下次可以自动登录
+users:
+  - name: "main"
+    enabled: true
+    contacts:
+      - "联系人昵称"
+    message: "续火花咯"
+```
 
-### 菜单选项说明
+## 常用命令
 
-- **立即执行续火花**：立即向当前用户的所有联系人发送消息
-- **立即为所有用户执行续火花**：为所有配置的用户执行续火花操作
-- **列出所有用户**：显示所有已配置的用户信息
-- **切换用户**：切换当前活跃用户
-- **添加新用户**：添加新的用户配置
-- **编辑用户信息**：修改现有用户的配置
-- **删除用户**：删除指定的用户配置
-- **刷新 Cookie**：更新用户的登录状态
-- **重复执行续火花**：指定次数重复执行续火花操作
-- **启动定时任务**：启动每天自动发送消息的定时任务
+```bash
+douyinfire doctor
+douyinfire login --user main
+douyinfire run --user main
+douyinfire run-all
+douyinfire next-run
+```
 
-## 用户配置说明
+旧命令仍然可用：
 
-每个用户需要配置以下信息：
+```bash
+python xuhuohua.py doctor
+```
 
-- **用户名称**：用于区分不同用户
-- **联系人列表**：要发送消息的联系人名称列表
-- **消息内容**：要发送的续火花消息
-- **Cookie 路径**：保存登录信息的文件路径
-- **私信按钮坐标**：抖音网页版私信按钮的屏幕坐标（根据屏幕分辨率调整）
+## 常驻运行
 
-## 注意事项
+安装 launchd 服务：
 
-- 本工具依赖于屏幕分辨率和网页布局，如果抖音网页版界面发生变化，可能需要调整私信按钮坐标
-- 建议将消息发送间隔设置得合理，以避免被系统判定为异常行为
-- 本工具仅用于学习交流，请勿用于商业目的或违反平台规则的行为
-- 使用前确保 Chrome 浏览器已安装
+```bash
+douyinfire service install
+douyinfire service status
+```
 
-## 常见问题
+卸载服务：
 
-**Q: 程序无法找到联系人怎么办？**  
-A: 确保联系人名称正确，并检查是否已经成为抖音好友
+```bash
+douyinfire service uninstall
+```
 
-**Q: 私信按钮点击失败怎么办？**  
-A: 调整私信按钮坐标，使其适应你的屏幕分辨率和浏览器窗口大小
+launchd 会在每天 `00:05` 启动 `douyinfire run-all`。程序内部会根据配置加入随机延迟，默认 0 到 20 分钟。
 
-**Q: 如何设置不同的消息内容？**  
-A: 在添加或编辑用户时，可以为每个用户设置不同的消息内容
+## 运行数据
 
-## 贡献
+- `data/profiles/<user>/`：Playwright 登录态
+- `data/runs/<run_id>.json`：任务结果
+- `logs/douyinfire.log`：应用日志
+- `screenshots/<run_id>/`：失败截图
 
-欢迎提交 Pull Request 或 Issues 来帮助改进这个工具！
+这些运行数据默认都被 `.gitignore` 排除。
 
-## 许可证
+## 测试
 
-MIT
+```bash
+python -m compileall douyinfire
+pytest
+douyinfire doctor
+```
+
+`doctor` 会检查配置、Playwright 依赖、运行目录和用户登录态。首次运行时 profile 缺失是正常的，执行 `douyinfire login --user <name>` 后即可生成。
