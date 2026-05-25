@@ -5,7 +5,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import TimeoutsConfig
+from .config import BrowserConfig, TimeoutsConfig
 
 DOUYIN_URL = "https://www.douyin.com/"
 
@@ -21,12 +21,21 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         screenshot_dir: Path,
         headless: bool = False,
         timeouts: TimeoutsConfig | None = None,
+        browser_config: BrowserConfig | None = None,
+        storage_state_path: Path | None = None,
+        mode: str = "run",
+        progress: Callable[[str, str, str], None] | None = None,
     ) -> None:
         self.profile_dir = profile_dir
         self.screenshot_dir = screenshot_dir
         self.headless = headless
         self.timeouts = timeouts or TimeoutsConfig()
+        self.browser_config = browser_config or BrowserConfig(run_headless=headless)
+        self.storage_state_path = storage_state_path or self.browser_config.storage_state_path
+        self.mode = mode
+        self.progress = progress
         self._playwright: Any = None
+        self.browser: Any = None
         self.context: Any = None
         self.page: Any = None
 
@@ -38,6 +47,16 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self.close()
 
     def start(self) -> None:
+        if self.mode == "login":
+            self._start_playwright_persistent(headless=self.browser_config.login_headless)
+            return
+
+        if self.browser_config.backend == "cloakbrowser":
+            self._start_cloakbrowser()
+        else:
+            self._start_playwright_persistent(headless=self.browser_config.run_headless)
+
+    def _start_playwright_persistent(self, headless: bool) -> None:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
@@ -48,17 +67,38 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self._playwright = sync_playwright().start()
         self.context = self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir),
-            headless=self.headless,
+            headless=headless,
             viewport={"width": 1440, "height": 1000},
             args=["--disable-blink-features=AutomationControlled"],
         )
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
         self.page.set_default_timeout(max(self.timeouts.contact_search_seconds, self.timeouts.input_box_seconds) * 1000)
 
+    def _start_cloakbrowser(self) -> None:
+        try:
+            from cloakbrowser import launch
+        except ImportError as exc:
+            raise BrowserError("请先 pip install cloakbrowser，或在配置中把 browser.backend 改为 playwright") from exc
+
+        if not self.storage_state_path.exists():
+            raise BrowserError(f"未找到登录态文件: {self.storage_state_path}。请先在 GUI 中执行登录。")
+
+        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        self.browser = launch(headless=self.browser_config.run_headless)
+        self.context = self.browser.new_context(
+            storage_state=str(self.storage_state_path),
+            viewport={"width": 1440, "height": 1000},
+        )
+        self.page = self.context.new_page()
+        self.page.set_default_timeout(max(self.timeouts.contact_search_seconds, self.timeouts.input_box_seconds) * 1000)
+
     def close(self) -> None:
         if self.context is not None:
             self.context.close()
             self.context = None
+        if self.browser is not None:
+            self.browser.close()
+            self.browser = None
         if self._playwright is not None:
             self._playwright.stop()
             self._playwright = None
@@ -74,25 +114,31 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             print(f"浏览器已打开。请在 {wait_seconds} 秒内完成抖音登录，时间到后会自动保存登录态。")
             page.wait_for_timeout(wait_seconds * 1000)
         page.goto(DOUYIN_URL, wait_until="domcontentloaded")
+        self.storage_state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.context.storage_state(path=str(self.storage_state_path))
 
     def send_message(self, contact: str, message: str, screenshot_prefix: str) -> None:
         page = self._require_page()
         try:
-            logging.info("Step open_home contact=%s", contact)
+            self._step_start("open_home", contact)
             page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
             self.screenshot(f"{screenshot_prefix}_home")
+            self._step_done("open_home", contact)
 
-            logging.info("Step open_messages contact=%s", contact)
+            self._step_start("open_messages", contact)
             self._open_messages(page)
             self.screenshot(f"{screenshot_prefix}_message_panel")
+            self._step_done("open_messages", contact)
 
-            logging.info("Step open_contact contact=%s", contact)
+            self._step_start("open_conversation", contact)
             self._open_contact(page, contact)
             self.screenshot(f"{screenshot_prefix}_conversation")
+            self._step_done("open_conversation", contact)
 
-            logging.info("Step send_message contact=%s", contact)
             self._fill_and_send(page, message)
+            self._step_start("done", contact)
+            self._step_done("done", contact)
         except Exception as exc:
             self.screenshot(f"{screenshot_prefix}_failure")
             raise BrowserError(str(exc)) from exc
@@ -127,10 +173,12 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         search_error: Exception | None = None
         try:
             self._search_contact(page, contact)
+            self._step_done("contact_recent_list", "未使用最近会话兜底")
             return
         except Exception as exc:
             search_error = exc
             logging.warning("Contact search failed contact=%s reason=%s; falling back to recent list", contact, exc)
+            self._step_done("contact_search", f"搜索失败，回退最近会话: {exc}")
             self.screenshot(f"contact_search_failure_{_safe_name(contact)}")
 
         try:
@@ -139,7 +187,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             raise BrowserError(f"未在私信搜索结果或最近会话中找到联系人 {contact}: search={search_error}; recent={exc}") from exc
 
     def _search_contact(self, page: Any, contact: str) -> None:
-        logging.info("Step contact_search contact=%s", contact)
+        self._step_start("contact_search", contact)
         search_input = self._find_message_search_input(page)
         search_input.click()
         _clear_and_fill(search_input, contact)
@@ -152,6 +200,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         ]
         _click_first_visible(candidates, f"contact search result {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
         page.wait_for_timeout(1000)
+        self._step_done("contact_search", contact)
 
     def _find_message_search_input(self, page: Any) -> Any:
         candidates = [
@@ -168,7 +217,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         )
 
     def _open_contact_from_recent_list(self, page: Any, contact: str) -> None:
-        logging.info("Step contact_recent_list contact=%s", contact)
+        self._step_start("contact_recent_list", contact)
         candidates = [
             page.get_by_text(contact, exact=True),
             page.get_by_text(contact),
@@ -176,9 +225,10 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         ]
         _click_first_visible(candidates, f"recent contact {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
         page.wait_for_timeout(1000)
+        self._step_done("contact_recent_list", contact)
 
     def _fill_and_send(self, page: Any, message: str) -> None:
-        logging.info("Step input_box")
+        self._step_start("input_box")
         candidates = [
             page.locator("textarea").last,
             page.locator("[contenteditable='true']").last,
@@ -186,11 +236,26 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         ]
         target = _first_visible(candidates, "message input", timeout_seconds=self.timeouts.input_box_seconds)
         target.click()
-        logging.info("Step input_message")
+        self._step_done("input_box")
+
+        self._step_start("input_message")
         target.fill(message)
-        logging.info("Step press_enter")
+        self._step_done("input_message")
+
+        self._step_start("press_enter")
         target.press("Enter")
         page.wait_for_timeout(self.timeouts.after_send_seconds * 1000)
+        self._step_done("press_enter")
+
+    def _step_start(self, step: str, detail: str = "") -> None:
+        logging.info("Step %s start %s", step, detail)
+        if self.progress:
+            self.progress(step, "running", detail)
+
+    def _step_done(self, step: str, detail: str = "") -> None:
+        logging.info("Step %s done %s", step, detail)
+        if self.progress:
+            self.progress(step, "done", detail)
 
 
 def _click_first_visible(candidates: list[Any], label: str, timeout_seconds: int) -> None:

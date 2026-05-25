@@ -22,10 +22,10 @@ http://127.0.0.1:8765
 GUI 支持：
 
 - 查看配置、服务状态和当前任务状态
-- 编辑并保存 `config/douyinfire.yaml`
+- 使用中文图形化表单编辑并保存 `config/douyinfire.yaml`
 - 打开登录窗口并保存 Playwright 登录态
 - 手动运行单个用户或全部用户
-- 查看 `logs/douyinfire.log`
+- 运行后自动切换到日志页，显示步骤进度条和 `logs/douyinfire.log`
 - 取消 launchd 自动化服务
 
 ## 安装
@@ -63,6 +63,12 @@ timeouts:
   input_box_seconds: 10
   after_send_seconds: 2
 
+browser:
+  backend: cloakbrowser
+  run_headless: true
+  login_headless: false
+  storage_state_path: data/states/main.json
+
 users:
   - name: "main"
     enabled: true
@@ -72,6 +78,16 @@ users:
 ```
 
 如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。当前流程会先在私信面板里搜索联系人，搜索失败后再回退最近会话列表。
+
+## 浏览器模式
+
+默认配置使用 CloakBrowser 做无头运行：
+
+- 登录仍然使用有头浏览器，便于扫码和处理平台交互。
+- 登录完成后会导出 `storage_state_path`。
+- 运行任务时使用 CloakBrowser headless 读取这个登录态。
+
+如果无头模式不可用，把 GUI 中的“运行后端”改为 `Playwright`，或把“运行时无头”改为“否”。
 
 ## CLI 备用命令
 

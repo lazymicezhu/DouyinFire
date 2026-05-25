@@ -17,6 +17,12 @@ timeouts:
   input_box_seconds: 10
   after_send_seconds: 2
 
+browser:
+  backend: cloakbrowser
+  run_headless: true
+  login_headless: false
+  storage_state_path: data/states/main.json
+
 users:
   - name: "main"
     enabled: true

@@ -13,6 +13,7 @@ dependencies = [
     "typer==0.25.1",
     "rich==14.3.4",
     "PyYAML==6.0.1",
+    "cloakbrowser==0.3.30",
 ]
 
 [project.scripts]

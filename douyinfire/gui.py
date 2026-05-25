@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import asdict
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .config import DEFAULT_CONFIG_PATH, ConfigError, ensure_runtime_dirs, load_config, write_example_config
+from .config import DEFAULT_CONFIG_PATH, ConfigError, ensure_runtime_dirs, load_config, parse_config, write_example_config
+from .gui_html import HTML
 from .service import service_status, uninstall_service
 from .tasks import login_user, run_all, run_user
 
@@ -22,6 +24,7 @@ class JobState:
         self.message = "idle"
         self.result: Any = None
         self.error = ""
+        self.steps = _initial_steps()
 
     def start(self, kind: str) -> bool:
         with self.lock:
@@ -32,14 +35,30 @@ class JobState:
             self.message = "running"
             self.result = None
             self.error = ""
+            self.steps = _initial_steps()
             return True
 
     def finish(self, message: str, result: Any = None, error: str = "") -> None:
         with self.lock:
+            if error:
+                self._mark_running_step("failed", error)
             self.running = False
             self.message = message
             self.result = result
             self.error = error
+
+    def update_step(self, key: str, status: str, detail: str = "") -> None:
+        with self.lock:
+            now = _now()
+            for step in self.steps:
+                if step["key"] == key:
+                    step["status"] = status
+                    step["detail"] = detail
+                    if status == "running":
+                        step["started_at"] = step["started_at"] or now
+                    if status in {"done", "failed"}:
+                        step["ended_at"] = now
+                    return
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
@@ -52,7 +71,16 @@ class JobState:
                 "message": self.message,
                 "result": result,
                 "error": self.error,
+                "steps": self.steps,
             }
+
+    def _mark_running_step(self, status: str, error: str) -> None:
+        for step in self.steps:
+            if step["status"] == "running":
+                step["status"] = status
+                step["error"] = error
+                step["ended_at"] = _now()
+                return
 
 
 class GuiServer:
@@ -95,6 +123,8 @@ class GuiServer:
             _send_json(request, self.state())
         elif parsed.path == "/api/config":
             _send_json(request, {"text": self._config_text()})
+        elif parsed.path == "/api/config/form":
+            _send_json(request, {"config": self._config_form()})
         elif parsed.path == "/api/logs":
             query = parse_qs(parsed.query)
             limit = int(query.get("limit", ["200"])[0])
@@ -115,6 +145,12 @@ class GuiServer:
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 self.config_path.write_text(text, encoding="utf-8")
                 _send_json(request, {"ok": True})
+            elif parsed.path == "/api/config/form":
+                text = form_payload_to_yaml(payload)
+                load_config_from_text(text, self.config_path)
+                self.config_path.parent.mkdir(parents=True, exist_ok=True)
+                self.config_path.write_text(text, encoding="utf-8")
+                _send_json(request, {"ok": True, "text": text})
             elif parsed.path == "/api/login":
                 user = str(payload.get("user", "")).strip()
                 wait_seconds = int(payload.get("wait_seconds", 180))
@@ -150,6 +186,7 @@ class GuiServer:
                         "enabled": user.enabled,
                         "contacts": user.contacts,
                         "profile": (config.data_dir / "profiles" / user.name).exists(),
+                        "storage_state": config.browser.storage_state_path.exists(),
                     }
                     for user in config.users
                 ],
@@ -160,6 +197,7 @@ class GuiServer:
                     "screenshots": str(config.screenshot_dir),
                 },
                 "timeouts": asdict(config.timeouts),
+                "browser": _browser_to_json(config.browser),
             }
         except Exception as exc:
             config_info = {"ok": False, "error": str(exc), "users": [], "paths": {"config": str(self.config_path)}}
@@ -186,16 +224,30 @@ class GuiServer:
 
     def _run_user(self, user_name: str) -> Any:
         config = load_config(self.config_path)
-        return run_user(config, config.user(user_name))
+        return run_user(config, config.user(user_name), progress=self.job.update_step)
 
     def _run_all(self) -> Any:
         config = load_config(self.config_path)
-        return run_all(config)
+        return run_all(config, progress=self.job.update_step)
 
     def _config_text(self) -> str:
         if not self.config_path.exists():
             return ""
         return self.config_path.read_text(encoding="utf-8")
+
+    def _config_form(self) -> dict[str, Any]:
+        config = load_config(self.config_path)
+        return {
+            "data_dir": str(config.data_dir),
+            "log_dir": str(config.log_dir),
+            "screenshot_dir": str(config.screenshot_dir),
+            "headless": config.headless,
+            "failure_notify_threshold": config.failure_notify_threshold,
+            "schedule": asdict(config.schedule),
+            "timeouts": asdict(config.timeouts),
+            "browser": _browser_to_json(config.browser),
+            "users": [asdict(user) for user in config.users],
+        }
 
     def _logs(self, limit: int) -> str:
         try:
@@ -219,9 +271,95 @@ def load_config_from_text(text: str, config_path: Path) -> None:
     except ImportError as exc:
         raise ConfigError("PyYAML is required for YAML config files.") from exc
     raw = yaml.safe_load(text) or {}
-    from .config import parse_config
-
     parse_config(raw, base_dir=config_path.parent.parent)
+
+
+def form_payload_to_yaml(payload: dict[str, Any]) -> str:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ConfigError("PyYAML is required for YAML config files.") from exc
+
+    users = []
+    for item in payload.get("users", []):
+        contacts = item.get("contacts", [])
+        if isinstance(contacts, str):
+            contacts = [line.strip() for line in contacts.replace(",", "\n").splitlines() if line.strip()]
+        users.append(
+            {
+                "name": str(item.get("name", "")).strip(),
+                "enabled": _as_bool(item.get("enabled", True)),
+                "contacts": contacts,
+                "message": str(item.get("message", "")),
+            }
+        )
+
+    data = {
+        "data_dir": str(payload.get("data_dir", "data")),
+        "log_dir": str(payload.get("log_dir", "logs")),
+        "screenshot_dir": str(payload.get("screenshot_dir", "screenshots")),
+        "headless": _as_bool(payload.get("headless", False)),
+        "failure_notify_threshold": int(payload.get("failure_notify_threshold", 1)),
+        "schedule": {
+            "time": str(payload.get("schedule", {}).get("time", "00:05")),
+            "jitter_minutes": int(payload.get("schedule", {}).get("jitter_minutes", 20)),
+            "min_contact_interval_seconds": int(payload.get("schedule", {}).get("min_contact_interval_seconds", 10)),
+        },
+        "timeouts": {
+            "home_ready_seconds": int(payload.get("timeouts", {}).get("home_ready_seconds", 5)),
+            "message_panel_seconds": int(payload.get("timeouts", {}).get("message_panel_seconds", 8)),
+            "contact_search_seconds": int(payload.get("timeouts", {}).get("contact_search_seconds", 15)),
+            "input_box_seconds": int(payload.get("timeouts", {}).get("input_box_seconds", 10)),
+            "after_send_seconds": int(payload.get("timeouts", {}).get("after_send_seconds", 2)),
+        },
+        "browser": {
+            "backend": str(payload.get("browser", {}).get("backend", "playwright")),
+            "run_headless": _as_bool(payload.get("browser", {}).get("run_headless", False)),
+            "login_headless": _as_bool(payload.get("browser", {}).get("login_headless", False)),
+            "storage_state_path": str(payload.get("browser", {}).get("storage_state_path", "data/states/main.json")),
+        },
+        "users": users,
+    }
+    text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    parse_config(yaml.safe_load(text), base_dir=Path("."))
+    return text
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in {"1", "true", "yes", "on", "是"}
+
+
+def _browser_to_json(browser: Any) -> dict[str, Any]:
+    return {
+        "backend": browser.backend,
+        "run_headless": browser.run_headless,
+        "login_headless": browser.login_headless,
+        "storage_state_path": str(browser.storage_state_path),
+    }
+
+
+def _initial_steps() -> list[dict[str, str]]:
+    return [
+        _step("open_home", "打开抖音首页"),
+        _step("open_messages", "打开私信面板"),
+        _step("contact_search", "搜索联系人"),
+        _step("contact_recent_list", "最近会话兜底"),
+        _step("open_conversation", "进入会话"),
+        _step("input_box", "查找输入框"),
+        _step("input_message", "输入消息"),
+        _step("press_enter", "发送消息"),
+        _step("done", "完成"),
+    ]
+
+
+def _step(key: str, label: str) -> dict[str, str]:
+    return {"key": key, "label": label, "status": "pending", "detail": "", "error": "", "started_at": "", "ended_at": ""}
+
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def run_gui(config_path: Path = DEFAULT_CONFIG_PATH, host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -256,7 +394,7 @@ def _send_html(request: BaseHTTPRequestHandler, html: str) -> None:
     request.wfile.write(body)
 
 
-HTML = r"""<!doctype html>
+LEGACY_HTML = r"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">

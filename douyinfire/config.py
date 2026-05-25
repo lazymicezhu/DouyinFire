@@ -29,6 +29,14 @@ class TimeoutsConfig:
 
 
 @dataclass(slots=True)
+class BrowserConfig:
+    backend: str = "playwright"
+    run_headless: bool = False
+    login_headless: bool = False
+    storage_state_path: Path = Path("data/states/main.json")
+
+
+@dataclass(slots=True)
 class UserConfig:
     name: str
     contacts: list[str]
@@ -41,6 +49,7 @@ class AppConfig:
     users: list[UserConfig]
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     timeouts: TimeoutsConfig = field(default_factory=TimeoutsConfig)
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_dir: Path = DEFAULT_LOG_DIR
     screenshot_dir: Path = DEFAULT_SCREENSHOT_DIR
@@ -83,11 +92,13 @@ def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AppConfig
     schedule = _parse_schedule(raw.get("schedule", {}))
     timeouts = _parse_timeouts(raw.get("timeouts", {}))
     base = base_dir or Path(".")
+    browser = _parse_browser(raw.get("browser", {}), base, raw)
 
     return AppConfig(
         users=users,
         schedule=schedule,
         timeouts=timeouts,
+        browser=browser,
         data_dir=_path_from(raw.get("data_dir", str(DEFAULT_DATA_DIR)), base),
         log_dir=_path_from(raw.get("log_dir", str(DEFAULT_LOG_DIR)), base),
         screenshot_dir=_path_from(raw.get("screenshot_dir", str(DEFAULT_SCREENSHOT_DIR)), base),
@@ -101,6 +112,7 @@ def ensure_runtime_dirs(config: AppConfig) -> None:
     config.log_dir.mkdir(parents=True, exist_ok=True)
     config.screenshot_dir.mkdir(parents=True, exist_ok=True)
     (config.data_dir / "profiles").mkdir(parents=True, exist_ok=True)
+    (config.data_dir / "states").mkdir(parents=True, exist_ok=True)
 
 
 def write_example_config(path: Path | str = DEFAULT_CONFIG_PATH, overwrite: bool = False) -> Path:
@@ -177,6 +189,26 @@ def _parse_timeouts(raw: Any) -> TimeoutsConfig:
     )
 
 
+def _parse_browser(raw: Any, base: Path, root: dict[str, Any]) -> BrowserConfig:
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ConfigError("browser must be an object")
+
+    backend = str(raw.get("backend", "playwright")).strip().lower()
+    if backend not in {"playwright", "cloakbrowser"}:
+        raise ConfigError("browser.backend must be either playwright or cloakbrowser")
+
+    legacy_headless = bool(root.get("headless", False))
+    storage_state = _path_from(raw.get("storage_state_path", "data/states/main.json"), base)
+    return BrowserConfig(
+        backend=backend,
+        run_headless=bool(raw.get("run_headless", legacy_headless)),
+        login_headless=bool(raw.get("login_headless", False)),
+        storage_state_path=storage_state,
+    )
+
+
 def _path_from(value: Any, base: Path) -> Path:
     path = Path(str(value)).expanduser()
     if path.is_absolute():
@@ -232,6 +264,12 @@ timeouts:
   contact_search_seconds: 15
   input_box_seconds: 10
   after_send_seconds: 2
+
+browser:
+  backend: playwright
+  run_headless: false
+  login_headless: false
+  storage_state_path: data/states/main.json
 
 users:
   - name: "main"

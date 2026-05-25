@@ -6,6 +6,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from .browser import BrowserError, DouyinBrowser
@@ -61,14 +62,17 @@ def setup_logging(config: AppConfig) -> None:
     )
 
 
-def run_all(config: AppConfig) -> RunResult:
+ProgressCallback = Callable[[str, str, str], None]
+
+
+def run_all(config: AppConfig, progress: ProgressCallback | None = None) -> RunResult:
     ensure_runtime_dirs(config)
     setup_logging(config)
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8]
     started_at = _now()
     logging.info("Run started: %s", run_id)
 
-    user_results = [run_user(config, user, run_id) for user in config.enabled_users]
+    user_results = [run_user(config, user, run_id, progress=progress) for user in config.enabled_users]
     result = RunResult(run_id=run_id, started_at=started_at, ended_at=_now(), users=user_results)
     _write_run_record(config, result)
 
@@ -79,7 +83,12 @@ def run_all(config: AppConfig) -> RunResult:
     return result
 
 
-def run_user(config: AppConfig, user: UserConfig, run_id: str | None = None) -> UserRunResult:
+def run_user(
+    config: AppConfig,
+    user: UserConfig,
+    run_id: str | None = None,
+    progress: ProgressCallback | None = None,
+) -> UserRunResult:
     ensure_runtime_dirs(config)
     setup_logging(config)
     current_run = run_id or datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8]
@@ -95,6 +104,10 @@ def run_user(config: AppConfig, user: UserConfig, run_id: str | None = None) -> 
             screenshot_dir=screenshot_dir,
             headless=config.headless,
             timeouts=config.timeouts,
+            browser_config=config.browser,
+            storage_state_path=_storage_state_path(config, user),
+            mode="run",
+            progress=progress,
         ) as browser:
             for contact in user.contacts:
                 result = _send_contact(browser, user, contact, current_run)
@@ -122,6 +135,9 @@ def login_user(config: AppConfig, user: UserConfig, wait_seconds: int | None = N
         screenshot_dir=config.screenshot_dir / "login" / user.name,
         headless=False,
         timeouts=config.timeouts,
+        browser_config=config.browser,
+        storage_state_path=_storage_state_path(config, user),
+        mode="login",
     ) as browser:
         browser.login(wait_seconds=wait_seconds)
     notify("DouyinFire 登录态已保存", f"用户 {user.name} 的浏览器登录态已更新。")
@@ -148,3 +164,10 @@ def _write_run_record(config: AppConfig, result: RunResult) -> Path:
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _storage_state_path(config: AppConfig, user: UserConfig) -> Path:
+    raw = str(config.browser.storage_state_path)
+    if "{user}" in raw:
+        return Path(raw.format(user=user.name))
+    return config.browser.storage_state_path

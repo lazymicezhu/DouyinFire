@@ -101,6 +101,13 @@ def doctor(
         table.add_row("playwright package", f"[red]{exc}[/red]")
 
     if cfg:
+        if cfg.browser.backend == "cloakbrowser":
+            try:
+                import cloakbrowser  # noqa: F401
+                table.add_row("cloakbrowser package", "[green]ok[/green]")
+            except Exception as exc:
+                ok = False
+                table.add_row("cloakbrowser package", f"[red]请先 pip install cloakbrowser: {exc}[/red]")
         for path in [cfg.data_dir, cfg.log_dir, cfg.screenshot_dir]:
             path.mkdir(parents=True, exist_ok=True)
             table.add_row(str(path), "[green]ok[/green]")
@@ -109,6 +116,11 @@ def doctor(
             status = "present" if profile.exists() else "missing; run login"
             color = "green" if profile.exists() else "yellow"
             table.add_row(f"profile:{user_config.name}", f"[{color}]{status}[/{color}]")
+        if cfg.browser.backend == "cloakbrowser":
+            state_file = cfg.browser.storage_state_path
+            state_status = "present" if state_file.exists() else "missing; run login"
+            state_color = "green" if state_file.exists() else "yellow"
+            table.add_row("storage state", f"[{state_color}]{state_status}[/{state_color}]")
 
     console.print(table)
     raise typer.Exit(code=0 if ok else 1)
