@@ -393,7 +393,7 @@ HTML = r"""<!doctype html>
     $('initConfig').onclick = () => post('/api/init', { overwrite:true });
     $('login').onclick = () => { activateTab('logs'); post('/api/login', { user:$('userSelect').value, wait_seconds:180 }); };
     $('loginNew').onclick = () => {
-      const user = prompt('请输入新账号名称，例如 main、Lazymice 或工作号');
+      const user = prompt('请输入新账号名称');
       if (!user || !user.trim()) return;
       activateTab('logs');
       post('/api/login-new', { user:user.trim(), source:$('userSelect').value, wait_seconds:180 });
