@@ -1,36 +1,48 @@
 # DouyinFire
 
-DouyinFire 是一个 Mac 本地运行的抖音续火花自动化工具。当前版本已经从早期的单文件 Selenium 脚本重构为 Playwright + CLI + 配置文件 + launchd 的结构，目标是低频、可控、可恢复地完成每日私信任务。
+DouyinFire 是一个 Mac 本地运行的抖音续火花辅助工具。当前版本使用 Playwright 保存浏览器登录态，并提供本地图形界面来编辑配置、登录、手动运行和查看日志。
 
-> 本项目只面向个人账号的低频自用自动化，不提供验证码绕过、风控绕过或批量营销能力。
+> 本项目只面向个人账号的低频自用，不提供验证码绕过、风控绕过或批量营销能力。
 
-## 功能
+## 当前运行方式
 
-- Playwright persistent profile 保存每个用户的登录态
-- YAML 配置多用户、联系人、消息和每日执行时间
-- CLI 管理初始化、登录、立即运行、检查和服务安装
-- 每次运行生成 JSON 记录、日志和失败截图
-- 单联系人失败不会中断整批任务
-- 失败达到阈值时发送 macOS 本地通知
-- launchd 支持每天 `00:05` 唤醒运行
+默认不启用定时自动化。使用本地 GUI 调试和手动触发：
+
+```bash
+cd "/Users/lazymice/Library/Mobile Documents/com~apple~CloudDocs/重要:常用文件备份/Lazymice/DouyinFire-main"
+/private/tmp/douyinfire-venv/bin/douyinfire gui
+```
+
+打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+GUI 支持：
+
+- 查看配置、服务状态和当前任务状态
+- 编辑并保存 `config/douyinfire.yaml`
+- 打开登录窗口并保存 Playwright 登录态
+- 手动运行单个用户或全部用户
+- 查看 `logs/douyinfire.log`
+- 取消 launchd 自动化服务
 
 ## 安装
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv /private/tmp/douyinfire-venv
+source /private/tmp/douyinfire-venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 pip install -e .
 ```
 
-## 初始化配置
+项目所在路径包含冒号，Python 不允许直接在该目录下创建 `.venv`，所以建议使用 `/private/tmp/douyinfire-venv`。
 
-```bash
-douyinfire init
-```
+## 配置
 
-这会生成 `config/douyinfire.yaml`。真实配置不会提交到 Git。也可以参考 `config/douyinfire.example.yaml`：
+真实配置文件是 `config/douyinfire.yaml`，不会提交到 Git。示例：
 
 ```yaml
 data_dir: data
@@ -52,38 +64,21 @@ users:
     message: "续火花咯"
 ```
 
-## 常用命令
+## CLI 备用命令
 
 ```bash
 douyinfire doctor
 douyinfire login --user main
 douyinfire run --user main
 douyinfire run-all
-douyinfire next-run
-```
-
-旧命令仍然可用：
-
-```bash
-python xuhuohua.py doctor
-```
-
-## 常驻运行
-
-安装 launchd 服务：
-
-```bash
-douyinfire service install
-douyinfire service status
-```
-
-卸载服务：
-
-```bash
 douyinfire service uninstall
 ```
 
-launchd 会在每天 `00:05` 启动 `douyinfire run-all`。程序内部会根据配置加入随机延迟，默认 0 到 20 分钟。
+旧入口仍然可用：
+
+```bash
+python xuhuohua.py gui
+```
 
 ## 运行数据
 
@@ -101,5 +96,3 @@ python -m compileall douyinfire
 pytest
 douyinfire doctor
 ```
-
-`doctor` 会检查配置、Playwright 依赖、运行目录和用户登录态。首次运行时 profile 缺失是正常的，执行 `douyinfire login --user <name>` 后即可生成。

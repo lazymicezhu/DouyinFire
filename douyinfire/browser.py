@@ -54,11 +54,15 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             self._playwright = None
         self.page = None
 
-    def login(self) -> None:
+    def login(self, wait_seconds: int | None = None) -> None:
         page = self._require_page()
         page.goto(DOUYIN_URL, wait_until="domcontentloaded")
-        print("浏览器已打开。请在页面中完成抖音登录；登录完成后回到终端按 Enter 保存登录态。")
-        input()
+        if wait_seconds is None:
+            print("浏览器已打开。请在页面中完成抖音登录；登录完成后回到终端按 Enter 保存登录态。")
+            input()
+        else:
+            print(f"浏览器已打开。请在 {wait_seconds} 秒内完成抖音登录，时间到后会自动保存登录态。")
+            page.wait_for_timeout(wait_seconds * 1000)
         page.goto(DOUYIN_URL, wait_until="domcontentloaded")
 
     def send_message(self, contact: str, message: str, screenshot_prefix: str) -> None:

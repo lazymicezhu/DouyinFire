@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import DEFAULT_CONFIG_PATH, ConfigError, load_config, write_example_config
+from .gui import run_gui
 from .scheduler import delay_until, next_run_at
 from .service import install_service, service_status, uninstall_service
 from .tasks import login_user, run_all as execute_all, run_user as execute_user
@@ -121,6 +122,16 @@ def next_run(
     cfg = _load(config)
     target = next_run_at(__import__("datetime").datetime.now(), cfg.schedule)
     console.print(f"Next run: {target.isoformat(timespec='seconds')} ({delay_until(target)} seconds from now)")
+
+
+@app.command()
+def gui(
+    config: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", "-c", help="Config path."),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind."),
+    port: int = typer.Option(8765, "--port", "-p", help="Port to bind."),
+) -> None:
+    """Start the local web GUI."""
+    run_gui(config_path=config, host=host, port=port)
 
 
 @service_app.command("install")

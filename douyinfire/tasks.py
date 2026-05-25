@@ -109,7 +109,7 @@ def run_user(config: AppConfig, user: UserConfig, run_id: str | None = None) -> 
     return user_result
 
 
-def login_user(config: AppConfig, user: UserConfig) -> None:
+def login_user(config: AppConfig, user: UserConfig, wait_seconds: int | None = None) -> None:
     ensure_runtime_dirs(config)
     setup_logging(config)
     with DouyinBrowser(
@@ -117,7 +117,7 @@ def login_user(config: AppConfig, user: UserConfig) -> None:
         screenshot_dir=config.screenshot_dir / "login" / user.name,
         headless=False,
     ) as browser:
-        browser.login()
+        browser.login(wait_seconds=wait_seconds)
     notify("DouyinFire 登录态已保存", f"用户 {user.name} 的浏览器登录态已更新。")
 
 
