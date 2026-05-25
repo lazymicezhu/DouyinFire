@@ -67,10 +67,10 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
 
     def send_message(self, contact: str, message: str, screenshot_prefix: str) -> None:
         page = self._require_page()
-        page.goto(DOUYIN_URL, wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle", timeout=20_000)
-
         try:
+            page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(3000)
+            self.screenshot(f"{screenshot_prefix}_home")
             self._open_messages(page)
             self._open_contact(page, contact)
             self._fill_and_send(page, message)
@@ -93,7 +93,12 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         candidates = [
             page.get_by_text("消息", exact=True),
             page.get_by_text("私信", exact=True),
+            page.get_by_label("消息"),
+            page.get_by_label("私信"),
             page.locator("a[href*='message']").first,
+            page.locator("a[href*='im']").first,
+            page.locator("[href*='message']").first,
+            page.locator("[href*='im']").first,
             page.locator("div[role='button']").filter(has_text="消息").first,
         ]
         _click_first_visible(candidates, "message entry")
@@ -130,15 +135,11 @@ def _first_visible(candidates: list[Any], label: str) -> Any:
     last_error: Exception | None = None
     for locator in candidates:
         try:
-            if locator.count() > 0 and locator.first.is_visible():
-                return locator.first
+            candidate = locator.first if locator.count() > 0 else locator
+            candidate.wait_for(state="visible", timeout=2500)
+            return candidate
         except Exception as exc:
             last_error = exc
-            try:
-                if locator.is_visible():
-                    return locator
-            except Exception as nested:
-                last_error = nested
     if last_error:
         raise BrowserError(f"Could not find visible {label}: {last_error}") from last_error
     raise BrowserError(f"Could not find visible {label}")
