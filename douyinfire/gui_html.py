@@ -47,7 +47,7 @@ HTML = r"""<!doctype html>
     .badge.done { color:var(--ok); border-color:#a9dec8; }
     .badge.running { color:var(--warn); border-color:#f2c17e; }
     .badge.failed { color:var(--danger); border-color:#f0b6b0; }
-    .progress-grid { display:grid; grid-template-columns:minmax(360px, 1fr) minmax(260px, .7fr); gap:14px; align-items:start; }
+    .progress-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:22px; align-items:start; }
     .progress-detail { border-left:1px solid var(--line); padding-left:14px; display:grid; gap:8px; }
     .countdown { color:var(--warn); font-variant-numeric:tabular-nums; }
     details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -135,9 +135,9 @@ HTML = r"""<!doctype html>
       <div id="tab-logs" class="hidden">
         <div class="panel">
           <h2>运行进度</h2>
+          <div class="bar"><div id="progressBar"></div></div>
           <div class="progress-grid">
             <div>
-            <div class="bar"><div id="progressBar"></div></div>
             <div class="steps" id="steps"></div>
             </div>
             <div class="progress-detail" id="progressDetail"></div>
