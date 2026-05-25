@@ -23,10 +23,10 @@ HTML = r"""<!doctype html>
     input, textarea, select { width:100%; padding:8px 10px; }
     textarea { min-height:84px; resize:vertical; }
     pre { margin:0; min-height:260px; max-height:420px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:12px; background:#111827; color:#e5e7eb; font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    label { display:grid; gap:5px; color:var(--muted); }
+    label { display:grid; gap:5px; color:var(--muted); align-content:start; }
     label span { color:var(--text); font-weight:600; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
     .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
     .panel { border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:14px; margin-bottom:14px; }
     .status { display:grid; gap:8px; margin-bottom:16px; }
@@ -202,7 +202,7 @@ HTML = r"""<!doctype html>
         row('后端', c.browser?.backend || ''),
         row('路径', c.paths?.config || '')
       ].join('');
-      $('users').innerHTML = (c.users || []).map(u => `<div class="user"><strong>${esc(u.name)}</strong><div class="muted">${u.enabled ? '启用' : '停用'} · ${u.contacts.length} 个联系人 · 浏览器 profile ${u.profile ? '存在' : '缺失'} · 无头登录态 ${u.storage_state ? '存在' : '缺失'}</div></div>`).join('');
+      $('users').innerHTML = (c.users || []).map(u => `<div class="user"><strong>${esc(u.name)}</strong><div class="muted">${u.enabled ? '启用' : '停用'} · ${u.contacts.length} 个联系人 · 有头登录 profile ${u.profile ? '存在' : '缺失'} · 无头登录态 ${u.storage_state ? '存在' : '缺失'}</div></div>`).join('');
       $('userSelect').innerHTML = (c.users || []).map(u => `<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
       renderResult(state.job);
       renderSteps(state.job.steps || []);
