@@ -184,7 +184,7 @@ class GuiServer:
                     {
                         "name": user.name,
                         "enabled": user.enabled,
-                        "contacts": user.contacts,
+                        "contacts": [asdict(contact) for contact in user.contacts],
                         "profile": (config.data_dir / "profiles" / user.name).exists(),
                         "storage_state": config.browser.storage_state_path.exists(),
                     }
@@ -282,9 +282,7 @@ def form_payload_to_yaml(payload: dict[str, Any]) -> str:
 
     users = []
     for item in payload.get("users", []):
-        contacts = item.get("contacts", [])
-        if isinstance(contacts, str):
-            contacts = [line.strip() for line in contacts.replace(",", "\n").splitlines() if line.strip()]
+        contacts = _contacts_from_payload(item.get("contacts", []))
         users.append(
             {
                 "name": str(item.get("name", "")).strip(),
@@ -331,6 +329,40 @@ def _as_bool(value: Any) -> bool:
     return str(value).lower() in {"1", "true", "yes", "on", "是"}
 
 
+def _contacts_from_payload(raw: Any) -> list[dict[str, str] | str]:
+    if isinstance(raw, list):
+        contacts = []
+        for item in raw:
+            if isinstance(item, dict):
+                contacts.append(
+                    {
+                        "name": str(item.get("name", "")).strip(),
+                        "profile_url": str(item.get("profile_url", "")).strip(),
+                        "message": str(item.get("message", "")).strip(),
+                    }
+                )
+            elif str(item).strip():
+                contacts.append(str(item).strip())
+        return contacts
+
+    contacts = []
+    for line in str(raw).replace(",", "\n").splitlines():
+        parts = [part.strip() for part in line.split("|")]
+        if not parts or not parts[0]:
+            continue
+        if len(parts) == 1:
+            contacts.append(parts[0])
+        else:
+            contacts.append(
+                {
+                    "name": parts[0],
+                    "profile_url": parts[1] if len(parts) > 1 else "",
+                    "message": parts[2] if len(parts) > 2 else "",
+                }
+            )
+    return contacts
+
+
 def _browser_to_json(browser: Any) -> dict[str, Any]:
     return {
         "backend": browser.backend,
@@ -344,7 +376,8 @@ def _initial_steps() -> list[dict[str, str]]:
     return [
         _step("open_home", "打开抖音首页"),
         _step("open_messages", "打开私信面板"),
-        _step("contact_search", "搜索联系人"),
+        _step("open_contact_profile", "打开联系人主页"),
+        _step("profile_message_entry", "点击主页私信"),
         _step("contact_recent_list", "最近会话兜底"),
         _step("open_conversation", "进入会话"),
         _step("input_box", "查找输入框"),

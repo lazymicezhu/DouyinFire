@@ -37,9 +37,16 @@ class BrowserConfig:
 
 
 @dataclass(slots=True)
+class ContactConfig:
+    name: str
+    profile_url: str = ""
+    message: str = ""
+
+
+@dataclass(slots=True)
 class UserConfig:
     name: str
-    contacts: list[str]
+    contacts: list[ContactConfig]
     message: str
     enabled: bool = True
 
@@ -142,16 +149,36 @@ def _parse_user(raw: Any, index: int) -> UserConfig:
         raise ConfigError(f"User #{index + 1} must be an object")
 
     name = _required_str(raw, "name", f"users[{index}]")
-    contacts = raw.get("contacts")
-    if not isinstance(contacts, list) or not contacts or not all(isinstance(item, str) and item.strip() for item in contacts):
-        raise ConfigError(f"users[{index}].contacts must be a non-empty list of strings")
+    contacts_raw = raw.get("contacts")
+    if not isinstance(contacts_raw, list) or not contacts_raw:
+        raise ConfigError(f"users[{index}].contacts must be a non-empty list")
+    contacts = [_parse_contact(item, index, contact_index) for contact_index, item in enumerate(contacts_raw)]
 
     message = _required_str(raw, "message", f"users[{index}]")
     return UserConfig(
         name=name,
-        contacts=[item.strip() for item in contacts],
+        contacts=contacts,
         message=message,
         enabled=bool(raw.get("enabled", True)),
+    )
+
+
+def _parse_contact(raw: Any, user_index: int, contact_index: int) -> ContactConfig:
+    prefix = f"users[{user_index}].contacts[{contact_index}]"
+    if isinstance(raw, str):
+        name = raw.strip()
+        if not name:
+            raise ConfigError(f"{prefix} must not be empty")
+        return ContactConfig(name=name)
+
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{prefix} must be a string or object")
+
+    name = _required_str(raw, "name", prefix)
+    return ContactConfig(
+        name=name,
+        profile_url=str(raw.get("profile_url", "")).strip(),
+        message=str(raw.get("message", "")).strip(),
     )
 
 
@@ -275,6 +302,7 @@ users:
   - name: "main"
     enabled: true
     contacts:
-      - "联系人昵称"
+      - name: "联系人备注名"
+        profile_url: "https://www.douyin.com/user/..."
     message: "续火花咯"
 """

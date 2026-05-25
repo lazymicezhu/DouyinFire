@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Callable
@@ -146,7 +147,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self.storage_state_path.parent.mkdir(parents=True, exist_ok=True)
         self.context.storage_state(path=str(self.storage_state_path))
 
-    def send_message(self, contact: str, message: str, screenshot_prefix: str) -> None:
+    def send_message(self, contact: str, message: str, screenshot_prefix: str, profile_url: str = "") -> None:
         page = self._require_page()
         try:
             self._step_start("open_home", contact)
@@ -161,9 +162,10 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             self._step_done("open_messages", contact)
 
             self._step_start("open_conversation", contact)
-            self._open_contact(page, contact)
+            self._open_contact(page, contact, profile_url)
             self.screenshot(f"{screenshot_prefix}_conversation")
             self._step_done("open_conversation", contact)
+            self._write_contact_metadata(screenshot_prefix, contact, profile_url)
 
             self._fill_and_send(page, message)
             self._step_start("done", contact)
@@ -201,52 +203,53 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         _click_first_visible(candidates, "message entry", timeout_seconds=self.timeouts.message_panel_seconds)
         page.wait_for_timeout(self.timeouts.message_panel_seconds * 1000)
 
-    def _open_contact(self, page: Any, contact: str) -> None:
-        search_error: Exception | None = None
-        try:
-            self._search_contact(page, contact)
-            self._step_done("contact_recent_list", "未使用最近会话兜底")
-            return
-        except Exception as exc:
-            search_error = exc
-            logging.warning("Contact search failed contact=%s reason=%s; falling back to recent list", contact, exc)
-            self._step_done("contact_search", f"搜索失败，回退最近会话: {exc}")
-            self.screenshot(f"contact_search_failure_{_safe_name(contact)}")
+    def _open_contact(self, page: Any, contact: str, profile_url: str = "") -> None:
+        profile_error: Exception | None = None
+        if profile_url:
+            try:
+                self._open_contact_from_profile(page, contact, profile_url)
+                self._step_done("contact_recent_list", "未使用最近会话兜底")
+                return
+            except Exception as exc:
+                profile_error = exc
+                logging.warning("Contact profile navigation failed contact=%s url=%s reason=%s; falling back to recent list", contact, profile_url, exc)
+                self._step_done("profile_message_entry", f"主页私信入口失败，回退最近会话: {exc}")
+                self.screenshot(f"profile_message_entry_failure_{_safe_name(contact)}")
 
         try:
             self._open_contact_from_recent_list(page, contact)
         except Exception as exc:
-            raise BrowserError(f"未在私信搜索结果或最近会话中找到联系人 {contact}: search={search_error}; recent={exc}") from exc
+            if profile_url:
+                raise BrowserError(f"未能通过主页链接或最近会话找到联系人 {contact}: profile={profile_error}; recent={exc}") from exc
+            raise BrowserError(f"未能在最近会话中找到联系人 {contact}，且未配置主页链接: recent={exc}") from exc
 
-    def _search_contact(self, page: Any, contact: str) -> None:
-        self._step_start("contact_search", contact)
-        search_input = self._find_message_search_input(page)
-        search_input.click()
-        _clear_and_fill(search_input, contact)
-        page.wait_for_timeout(1000)
+    def _open_contact_from_profile(self, page: Any, contact: str, profile_url: str) -> None:
+        self._step_start("open_contact_profile", profile_url)
+        logging.info("Opening contact profile contact=%s url=%s", contact, profile_url)
+        page.goto(profile_url, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
+        self._step_done("open_contact_profile", page.url)
 
+        self._step_start("profile_message_entry", contact)
         candidates = [
-            page.get_by_text(contact, exact=True),
-            page.get_by_text(contact),
-            page.locator(f"text={contact}").first,
+            page.get_by_text("私信", exact=True),
+            page.get_by_text("消息", exact=True),
+            page.get_by_text("聊天", exact=True),
+            page.get_by_role("button", name="私信"),
+            page.get_by_role("button", name="消息"),
+            page.get_by_role("button", name="聊天"),
+            page.locator("button").filter(has_text="私信").first,
+            page.locator("button").filter(has_text="消息").first,
+            page.locator("button").filter(has_text="聊天").first,
+            page.locator("a").filter(has_text="私信").first,
+            page.locator("a").filter(has_text="消息").first,
+            page.locator("a").filter(has_text="聊天").first,
+            page.locator("[href*='message']").first,
+            page.locator("[href*='im']").first,
         ]
-        _click_first_visible(candidates, f"contact search result {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
+        _click_first_visible(candidates, f"profile message entry {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
         page.wait_for_timeout(1000)
-        self._step_done("contact_search", contact)
-
-    def _find_message_search_input(self, page: Any) -> Any:
-        candidates = [
-            page.locator("input[placeholder*='搜索']"),
-            page.locator("input[aria-label*='搜索']"),
-            page.locator("[contenteditable='true'][aria-label*='搜索']"),
-            page.locator("[role='textbox'][aria-label*='搜索']"),
-        ]
-        return _first_visible_from_locators(
-            candidates,
-            "message search input",
-            timeout_seconds=self.timeouts.message_panel_seconds,
-            predicate=_looks_like_message_search,
-        )
+        self._step_done("profile_message_entry", contact)
 
     def _open_contact_from_recent_list(self, page: Any, contact: str) -> None:
         self._step_start("contact_recent_list", contact)
@@ -258,6 +261,24 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         _click_first_visible(candidates, f"recent contact {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
         page.wait_for_timeout(1000)
         self._step_done("contact_recent_list", contact)
+
+    def _write_contact_metadata(self, screenshot_prefix: str, contact: str, profile_url: str) -> None:
+        page = self._require_page()
+        path = self.screenshot_dir / f"{screenshot_prefix}_contact.json"
+        data = {
+            "contact": contact,
+            "profile_url": profile_url,
+            "final_url": page.url,
+            "title": "",
+        }
+        try:
+            data["title"] = page.title()
+        except Exception as exc:
+            logging.warning("Could not read page title contact=%s reason=%s", contact, exc)
+        try:
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logging.warning("Could not write contact metadata contact=%s reason=%s", contact, exc)
 
     def _fill_and_send(self, page: Any, message: str) -> None:
         self._step_start("input_box")
@@ -329,31 +350,6 @@ def _first_visible_from_locators(
     if last_error:
         raise BrowserError(f"Could not find visible {label}: {last_error}") from last_error
     raise BrowserError(f"Could not find visible {label}")
-
-
-def _looks_like_message_search(locator: Any) -> bool:
-    try:
-        placeholder = locator.get_attribute("placeholder") or ""
-        aria_label = locator.get_attribute("aria-label") or ""
-        text = f"{placeholder} {aria_label}"
-        box = locator.bounding_box()
-        if "感兴趣" in text:
-            return False
-        if box and box.get("x", 0) < 900:
-            return False
-        return "搜索" in text or bool(box)
-    except Exception:
-        return True
-
-
-def _clear_and_fill(locator: Any, value: str) -> None:
-    try:
-        locator.fill("")
-        locator.fill(value)
-    except Exception:
-        locator.press("Meta+A")
-        locator.press("Backspace")
-        locator.type(value)
 
 
 def _safe_name(value: str) -> str:

@@ -18,9 +18,9 @@ def test_job_state_marks_running_step_failed() -> None:
     job = JobState()
 
     job.start("run:main")
-    job.update_step("contact_search", "running", "main")
+    job.update_step("profile_message_entry", "running", "main")
     job.finish("failed", error="not found")
-    contact_step = [step for step in job.snapshot()["steps"] if step["key"] == "contact_search"][0]
+    contact_step = [step for step in job.snapshot()["steps"] if step["key"] == "profile_message_entry"][0]
 
     assert contact_step["status"] == "failed"
     assert contact_step["error"] == "not found"

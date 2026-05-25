@@ -10,7 +10,7 @@ from typing import Callable
 from uuid import uuid4
 
 from .browser import BrowserError, DouyinBrowser
-from .config import AppConfig, UserConfig, ensure_runtime_dirs
+from .config import AppConfig, ContactConfig, UserConfig, ensure_runtime_dirs
 from .notify import notify
 
 
@@ -20,6 +20,7 @@ class ContactResult:
     success: bool
     reason: str = ""
     skipped: bool = False
+    profile_url: str = ""
 
 
 @dataclass(slots=True)
@@ -110,24 +111,31 @@ def run_user(
             mode="run",
             progress=progress,
         ) as browser:
-            for contact in user.contacts:
+            for index, contact in enumerate(user.contacts):
                 if _recently_sent(config, user, contact):
-                    logging.info("Skipping duplicate send user=%s contact=%s", user.name, contact)
-                    result = ContactResult(contact=contact, success=True, reason="最近已发送，跳过重复", skipped=True)
+                    logging.info("Skipping duplicate send user=%s contact=%s", user.name, contact.name)
+                    result = ContactResult(
+                        contact=contact.name,
+                        success=True,
+                        reason="最近已发送，跳过重复",
+                        skipped=True,
+                        profile_url=contact.profile_url,
+                    )
                 else:
                     result = _send_contact(browser, user, contact, current_run)
                     if result.success and not result.skipped:
                         _record_sent(config, user, contact)
                 results.append(result)
-                time.sleep(config.schedule.min_contact_interval_seconds)
+                if index < len(user.contacts) - 1:
+                    time.sleep(config.schedule.min_contact_interval_seconds)
     except BrowserError as exc:
         logging.exception("Browser failed for user %s", user.name)
-        remaining = [contact for contact in user.contacts if contact not in {item.contact for item in results}]
-        results.extend(ContactResult(contact=contact, success=False, reason=str(exc)) for contact in remaining)
+        remaining = [contact for contact in user.contacts if contact.name not in {item.contact for item in results}]
+        results.extend(ContactResult(contact=contact.name, success=False, reason=str(exc), profile_url=contact.profile_url) for contact in remaining)
     except Exception as exc:
         logging.exception("Unexpected failure for user %s", user.name)
-        remaining = [contact for contact in user.contacts if contact not in {item.contact for item in results}]
-        results.extend(ContactResult(contact=contact, success=False, reason=str(exc)) for contact in remaining)
+        remaining = [contact for contact in user.contacts if contact.name not in {item.contact for item in results}]
+        results.extend(ContactResult(contact=contact.name, success=False, reason=str(exc), profile_url=contact.profile_url) for contact in remaining)
 
     user_result = UserRunResult(user=user.name, started_at=started_at, ended_at=_now(), results=results)
     logging.info("User run finished: %s success=%s failure=%s", user.name, user_result.success_count, user_result.failure_count)
@@ -150,15 +158,16 @@ def login_user(config: AppConfig, user: UserConfig, wait_seconds: int | None = N
     notify("DouyinFire 登录态已保存", f"用户 {user.name} 的浏览器登录态已更新。")
 
 
-def _send_contact(browser: DouyinBrowser, user: UserConfig, contact: str, run_id: str) -> ContactResult:
-    logging.info("Sending message user=%s contact=%s", user.name, contact)
+def _send_contact(browser: DouyinBrowser, user: UserConfig, contact: ContactConfig, run_id: str) -> ContactResult:
+    message = contact.message or user.message
+    logging.info("Sending message user=%s contact=%s profile_url=%s", user.name, contact.name, contact.profile_url or "-")
     try:
-        browser.send_message(contact, user.message, f"{run_id}_{contact}")
-        logging.info("Contact sent user=%s contact=%s", user.name, contact)
-        return ContactResult(contact=contact, success=True)
+        browser.send_message(contact.name, message, f"{run_id}_{contact.name}", profile_url=contact.profile_url)
+        logging.info("Contact sent user=%s contact=%s", user.name, contact.name)
+        return ContactResult(contact=contact.name, success=True, profile_url=contact.profile_url)
     except Exception as exc:
-        logging.warning("Contact failed user=%s contact=%s reason=%s", user.name, contact, exc)
-        return ContactResult(contact=contact, success=False, reason=str(exc))
+        logging.warning("Contact failed user=%s contact=%s reason=%s", user.name, contact.name, exc)
+        return ContactResult(contact=contact.name, success=False, reason=str(exc), profile_url=contact.profile_url)
 
 
 def _write_run_record(config: AppConfig, result: RunResult) -> Path:
@@ -180,7 +189,7 @@ def _storage_state_path(config: AppConfig, user: UserConfig) -> Path:
     return config.browser.storage_state_path
 
 
-def _recently_sent(config: AppConfig, user: UserConfig, contact: str, cooldown_seconds: int = 180) -> bool:
+def _recently_sent(config: AppConfig, user: UserConfig, contact: ContactConfig, cooldown_seconds: int = 180) -> bool:
     record = _sent_records(config)
     key = _sent_key(user, contact)
     value = record.get(key)
@@ -193,7 +202,7 @@ def _recently_sent(config: AppConfig, user: UserConfig, contact: str, cooldown_s
     return datetime.now() - sent_at < timedelta(seconds=cooldown_seconds)
 
 
-def _record_sent(config: AppConfig, user: UserConfig, contact: str) -> None:
+def _record_sent(config: AppConfig, user: UserConfig, contact: ContactConfig) -> None:
     path = config.data_dir / "last_sent.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     record = _sent_records(config)
@@ -214,5 +223,5 @@ def _sent_records(config: AppConfig) -> dict[str, str]:
     return {str(key): str(value) for key, value in data.items()}
 
 
-def _sent_key(user: UserConfig, contact: str) -> str:
-    return f"{user.name}:{contact}:{user.message}"
+def _sent_key(user: UserConfig, contact: ContactConfig) -> str:
+    return f"{user.name}:{contact.name}:{contact.profile_url}:{contact.message or user.message}"

@@ -27,5 +27,6 @@ users:
   - name: "main"
     enabled: true
     contacts:
-      - "联系人昵称"
+      - name: "联系人备注名"
+        profile_url: "https://www.douyin.com/user/..."
     message: "续火花咯"

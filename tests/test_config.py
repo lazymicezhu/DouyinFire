@@ -26,6 +26,8 @@ def test_parse_config_applies_defaults() -> None:
     assert config.timeouts.home_ready_seconds == 5
     assert config.timeouts.contact_search_seconds == 15
     assert config.data_dir == Path("/tmp/douyinfire/data")
+    assert config.users[0].contacts[0].name == "a"
+    assert config.users[0].contacts[0].profile_url == ""
 
 
 def test_parse_config_accepts_timeouts() -> None:
@@ -68,6 +70,31 @@ def test_parse_config_accepts_browser_config() -> None:
     assert config.browser.storage_state_path == Path("/tmp/douyinfire/data/states/main.json")
 
 
+def test_parse_config_accepts_profile_contact_objects() -> None:
+    config = parse_config(
+        {
+            "users": [
+                {
+                    "name": "main",
+                    "contacts": [
+                        {
+                            "name": "friend",
+                            "profile_url": "https://www.douyin.com/user/example",
+                            "message": "custom",
+                        }
+                    ],
+                    "message": "hello",
+                }
+            ]
+        }
+    )
+
+    contact = config.users[0].contacts[0]
+    assert contact.name == "friend"
+    assert contact.profile_url == "https://www.douyin.com/user/example"
+    assert contact.message == "custom"
+
+
 def test_parse_config_rejects_bad_browser_backend() -> None:
     with pytest.raises(ConfigError):
         parse_config(
@@ -103,13 +130,15 @@ def test_form_payload_to_yaml_round_trips() -> None:
                 "jitter_minutes": 20,
                 "min_contact_interval_seconds": 10,
             },
-            "users": [{"name": "main", "enabled": True, "contacts": "a\nb", "message": "hello"}],
+            "users": [{"name": "main", "enabled": True, "contacts": "a | https://www.douyin.com/user/a\nb", "message": "hello"}],
         }
     )
     config = parse_config(__import__("yaml").safe_load(text))
 
     assert config.browser.backend == "cloakbrowser"
-    assert config.users[0].contacts == ["a", "b"]
+    assert config.users[0].contacts[0].name == "a"
+    assert config.users[0].contacts[0].profile_url == "https://www.douyin.com/user/a"
+    assert config.users[0].contacts[1].name == "b"
 
 
 def test_parse_config_rejects_bad_timeout() -> None:

@@ -47,10 +47,11 @@ HTML = r"""<!doctype html>
     .badge.done { color:var(--ok); border-color:#a9dec8; }
     .badge.running { color:var(--warn); border-color:#f2c17e; }
     .badge.failed { color:var(--danger); border-color:#f0b6b0; }
-    .logs-grid { display:grid; grid-template-columns:minmax(320px, .9fr) minmax(0, 1.1fr); gap:14px; align-items:start; }
+    .progress-grid { display:grid; grid-template-columns:minmax(360px, 1fr) minmax(260px, .7fr); gap:14px; align-items:start; }
+    .progress-detail { border-left:1px solid var(--line); padding-left:14px; display:grid; gap:8px; }
     .countdown { color:var(--warn); font-variant-numeric:tabular-nums; }
     details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    @media (max-width:900px) { main,.grid,.grid3,.logs-grid { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+    @media (max-width:900px) { main,.grid,.grid3,.progress-grid { grid-template-columns:1fr; } .progress-detail { border-left:0; padding-left:0; border-top:1px solid var(--line); padding-top:12px; } aside { border-right:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
@@ -120,7 +121,7 @@ HTML = r"""<!doctype html>
             <div class="grid">
               <label><span>用户名称</span><input name="users.0.name"></label>
               <label><span>启用用户</span><select name="users.0.enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
-              <label><span>联系人列表，每行一个</span><textarea name="users.0.contacts"></textarea></label>
+              <label><span>联系人，每行：备注名 | 主页链接 | 可选消息</span><textarea name="users.0.contacts"></textarea></label>
               <label><span>消息内容</span><textarea name="users.0.message"></textarea></label>
             </div>
           </div>
@@ -132,17 +133,18 @@ HTML = r"""<!doctype html>
         </form>
       </div>
       <div id="tab-logs" class="hidden">
-        <div class="logs-grid">
-          <div class="panel">
-            <h2>运行进度</h2>
+        <div class="panel">
+          <h2>运行进度</h2>
+          <div class="progress-grid">
+            <div>
             <div class="bar"><div id="progressBar"></div></div>
             <div class="steps" id="steps"></div>
-          </div>
-          <div>
-            <div class="row"><button id="reloadLogs">刷新日志</button></div>
-            <pre id="logs"></pre>
+            </div>
+            <div class="progress-detail" id="progressDetail"></div>
           </div>
         </div>
+        <div class="row"><button id="reloadLogs">刷新日志</button></div>
+        <pre id="logs"></pre>
       </div>
       <div id="tab-result" class="hidden">
         <pre id="result"></pre>
@@ -200,6 +202,13 @@ HTML = r"""<!doctype html>
       const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
       $('progressBar').style.width = pct + '%';
       $('steps').innerHTML = steps.map(s => `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span><span class="muted">${esc(s.detail || s.error || '')}</span></div>`).join('');
+      const active = steps.find(s => s.status === 'running') || steps.find(s => s.status === 'failed') || steps.slice().reverse().find(s => s.status === 'done') || {};
+      $('progressDetail').innerHTML = [
+        row('当前步骤', active.label || '等待'),
+        row('状态', statusName(active.status || 'pending')),
+        row('倒计时', countdownText(active) || ''),
+        row('详情', active.detail || active.error || '')
+      ].join('');
     }
     function rerenderCountdowns() {
       if (!state?.job?.steps) return;
@@ -220,7 +229,8 @@ HTML = r"""<!doctype html>
       return ({
         open_home: t.home_ready_seconds,
         open_messages: t.message_panel_seconds,
-        contact_search: t.contact_search_seconds,
+        open_contact_profile: t.home_ready_seconds,
+        profile_message_entry: t.contact_search_seconds,
         contact_recent_list: t.contact_search_seconds,
         open_conversation: t.contact_search_seconds,
         input_box: t.input_box_seconds,
@@ -242,7 +252,7 @@ HTML = r"""<!doctype html>
       const u = (c.users || [])[0] || { name:'main', enabled:true, contacts:[], message:'' };
       setVal('users.0.name', u.name);
       setVal('users.0.enabled', String(!!u.enabled));
-      setVal('users.0.contacts', (u.contacts || []).join('\n'));
+      setVal('users.0.contacts', contactsToText(u.contacts || []));
       setVal('users.0.message', u.message || '');
     }
     function collectForm() {
@@ -274,6 +284,12 @@ HTML = r"""<!doctype html>
     }
     function setVal(name, value) { const el = document.querySelector(`[name="${name}"]`); if (el) el.value = value ?? ''; }
     function val(name) { const el = document.querySelector(`[name="${name}"]`); return el ? el.value : ''; }
+    function contactsToText(contacts) {
+      return contacts.map(c => {
+        if (typeof c === 'string') return c;
+        return [c.name || '', c.profile_url || '', c.message || ''].join(' | ').replace(/( \| )+$/,'');
+      }).join('\n');
+    }
     function statusName(v) { return ({pending:'等待', running:'运行中', done:'完成', failed:'失败'}[v] || v); }
     function row(k, v) { return `<div class="line"><span>${esc(k)}</span><span class="muted">${esc(String(v || ''))}</span></div>`; }
     function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }

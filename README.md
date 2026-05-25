@@ -73,11 +73,14 @@ users:
   - name: "main"
     enabled: true
     contacts:
-      - "联系人昵称"
+      - name: "联系人备注名"
+        profile_url: "https://www.douyin.com/user/..."
     message: "续火花咯"
 ```
 
-如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。当前流程会先在私信面板里搜索联系人，搜索失败后再回退最近会话列表。
+联系人推荐填写抖音主页链接或分享链接。当前流程会优先打开联系人主页并点击主页里的“私信/消息/聊天”入口；如果主页入口不可用，再回退到最近会话昵称匹配。旧的纯昵称联系人仍可读取，但只适合作为最近会话兜底。
+
+如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。
 
 ## 浏览器模式
 
