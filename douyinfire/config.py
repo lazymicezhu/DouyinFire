@@ -20,6 +20,15 @@ class ScheduleConfig:
 
 
 @dataclass(slots=True)
+class TimeoutsConfig:
+    home_ready_seconds: int = 5
+    message_panel_seconds: int = 8
+    contact_search_seconds: int = 15
+    input_box_seconds: int = 10
+    after_send_seconds: int = 2
+
+
+@dataclass(slots=True)
 class UserConfig:
     name: str
     contacts: list[str]
@@ -31,6 +40,7 @@ class UserConfig:
 class AppConfig:
     users: list[UserConfig]
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
+    timeouts: TimeoutsConfig = field(default_factory=TimeoutsConfig)
     data_dir: Path = DEFAULT_DATA_DIR
     log_dir: Path = DEFAULT_LOG_DIR
     screenshot_dir: Path = DEFAULT_SCREENSHOT_DIR
@@ -71,11 +81,13 @@ def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AppConfig
 
     users = [_parse_user(item, index) for index, item in enumerate(users_raw)]
     schedule = _parse_schedule(raw.get("schedule", {}))
+    timeouts = _parse_timeouts(raw.get("timeouts", {}))
     base = base_dir or Path(".")
 
     return AppConfig(
         users=users,
         schedule=schedule,
+        timeouts=timeouts,
         data_dir=_path_from(raw.get("data_dir", str(DEFAULT_DATA_DIR)), base),
         log_dir=_path_from(raw.get("log_dir", str(DEFAULT_LOG_DIR)), base),
         screenshot_dir=_path_from(raw.get("screenshot_dir", str(DEFAULT_SCREENSHOT_DIR)), base),
@@ -150,6 +162,21 @@ def _parse_schedule(raw: Any) -> ScheduleConfig:
     )
 
 
+def _parse_timeouts(raw: Any) -> TimeoutsConfig:
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ConfigError("timeouts must be an object")
+
+    return TimeoutsConfig(
+        home_ready_seconds=_positive_int(raw.get("home_ready_seconds", 5), "timeouts.home_ready_seconds", allow_zero=False),
+        message_panel_seconds=_positive_int(raw.get("message_panel_seconds", 8), "timeouts.message_panel_seconds", allow_zero=False),
+        contact_search_seconds=_positive_int(raw.get("contact_search_seconds", 15), "timeouts.contact_search_seconds", allow_zero=False),
+        input_box_seconds=_positive_int(raw.get("input_box_seconds", 10), "timeouts.input_box_seconds", allow_zero=False),
+        after_send_seconds=_positive_int(raw.get("after_send_seconds", 2), "timeouts.after_send_seconds", allow_zero=False),
+    )
+
+
 def _path_from(value: Any, base: Path) -> Path:
     path = Path(str(value)).expanduser()
     if path.is_absolute():
@@ -198,6 +225,13 @@ schedule:
   time: "00:05"
   jitter_minutes: 20
   min_contact_interval_seconds: 10
+
+timeouts:
+  home_ready_seconds: 5
+  message_panel_seconds: 8
+  contact_search_seconds: 15
+  input_box_seconds: 10
+  after_send_seconds: 2
 
 users:
   - name: "main"

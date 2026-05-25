@@ -10,6 +10,13 @@ schedule:
   jitter_minutes: 20
   min_contact_interval_seconds: 10
 
+timeouts:
+  home_ready_seconds: 5
+  message_panel_seconds: 8
+  contact_search_seconds: 15
+  input_box_seconds: 10
+  after_send_seconds: 2
+
 users:
   - name: "main"
     enabled: true

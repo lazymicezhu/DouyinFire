@@ -56,6 +56,13 @@ schedule:
   jitter_minutes: 20
   min_contact_interval_seconds: 10
 
+timeouts:
+  home_ready_seconds: 5
+  message_panel_seconds: 8
+  contact_search_seconds: 15
+  input_box_seconds: 10
+  after_send_seconds: 2
+
 users:
   - name: "main"
     enabled: true
@@ -63,6 +70,8 @@ users:
       - "联系人昵称"
     message: "续火花咯"
 ```
+
+如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。当前流程会先在私信面板里搜索联系人，搜索失败后再回退最近会话列表。
 
 ## CLI 备用命令
 

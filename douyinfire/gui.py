@@ -159,6 +159,7 @@ class GuiServer:
                     "data": str(config.data_dir),
                     "screenshots": str(config.screenshot_dir),
                 },
+                "timeouts": asdict(config.timeouts),
             }
         except Exception as exc:
             config_info = {"ok": False, "error": str(exc), "users": [], "paths": {"config": str(self.config_path)}}

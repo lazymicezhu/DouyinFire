@@ -90,7 +90,12 @@ def run_user(config: AppConfig, user: UserConfig, run_id: str | None = None) -> 
 
     logging.info("User run started: %s", user.name)
     try:
-        with DouyinBrowser(profile_dir=profile_dir, screenshot_dir=screenshot_dir, headless=config.headless) as browser:
+        with DouyinBrowser(
+            profile_dir=profile_dir,
+            screenshot_dir=screenshot_dir,
+            headless=config.headless,
+            timeouts=config.timeouts,
+        ) as browser:
             for contact in user.contacts:
                 result = _send_contact(browser, user, contact, current_run)
                 results.append(result)
@@ -116,6 +121,7 @@ def login_user(config: AppConfig, user: UserConfig, wait_seconds: int | None = N
         profile_dir=config.data_dir / "profiles" / user.name,
         screenshot_dir=config.screenshot_dir / "login" / user.name,
         headless=False,
+        timeouts=config.timeouts,
     ) as browser:
         browser.login(wait_seconds=wait_seconds)
     notify("DouyinFire 登录态已保存", f"用户 {user.name} 的浏览器登录态已更新。")
