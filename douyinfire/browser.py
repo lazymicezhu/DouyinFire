@@ -81,7 +81,8 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             raise BrowserError("请先 pip install cloakbrowser，或在配置中把 browser.backend 改为 playwright") from exc
 
         if not self.storage_state_path.exists():
-            raise BrowserError(f"未找到登录态文件: {self.storage_state_path}。请先在 GUI 中执行登录。")
+            logging.info("Storage state missing; exporting from profile: %s", self.storage_state_path)
+            self._export_storage_state_from_profile()
 
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
         self.browser = launch(headless=self.browser_config.run_headless)
@@ -91,6 +92,34 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         )
         self.page = self.context.new_page()
         self.page.set_default_timeout(max(self.timeouts.contact_search_seconds, self.timeouts.input_box_seconds) * 1000)
+
+    def _export_storage_state_from_profile(self) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise BrowserError("Playwright is not installed. Run: pip install -r requirements.txt") from exc
+
+        if not self.profile_dir.exists():
+            raise BrowserError(f"未找到浏览器 profile: {self.profile_dir}。请先在 GUI 中执行登录。") from None
+
+        playwright = sync_playwright().start()
+        context = None
+        try:
+            context = playwright.chromium.launch_persistent_context(
+                user_data_dir=str(self.profile_dir),
+                headless=False,
+                viewport={"width": 1440, "height": 1000},
+            )
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(3000)
+            self.storage_state_path.parent.mkdir(parents=True, exist_ok=True)
+            context.storage_state(path=str(self.storage_state_path))
+            logging.info("Storage state exported: %s", self.storage_state_path)
+        finally:
+            if context is not None:
+                context.close()
+            playwright.stop()
 
     def close(self) -> None:
         if self.context is not None:
@@ -146,7 +175,10 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
     def screenshot(self, name: str) -> Path:
         page = self._require_page()
         path = self.screenshot_dir / f"{name}.png"
-        page.screenshot(path=str(path), full_page=True)
+        try:
+            page.screenshot(path=str(path), full_page=True, timeout=5000)
+        except Exception as exc:
+            logging.warning("Screenshot failed name=%s reason=%s", name, exc)
         return path
 
     def _require_page(self) -> Any:
