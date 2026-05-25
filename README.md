@@ -20,8 +20,8 @@ DouyinFire 是一个 Mac 本地运行的抖音续火花辅助工具。当前版�
 默认不启用定时自动化。使用本地 GUI 调试和手动触发：
 
 ```bash
-cd "/Users/lazymice/Library/Mobile Documents/com~apple~CloudDocs/重要:常用文件备份/Lazymice/DouyinFire-main"
-/private/tmp/douyinfire-venv/bin/douyinfire gui
+cd DouyinFire
+douyinfire gui
 ```
 
 打开：
@@ -42,14 +42,12 @@ GUI 支持：
 ## 安装
 
 ```bash
-python3 -m venv /private/tmp/douyinfire-venv
-source /private/tmp/douyinfire-venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 pip install -e .
 ```
-
-项目所在路径包含冒号，Python 不允许直接在该目录下创建 `.venv`，所以建议使用 `/private/tmp/douyinfire-venv`。
 
 ## 配置
 
@@ -84,11 +82,14 @@ users:
   - name: "main"
     enabled: true
     contacts:
-      - "联系人昵称"
+      - name: "联系人备注名"
+        profile_url: "https://www.douyin.com/user/..."
     message: "续火花咯"
 ```
 
-如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。当前流程会先在私信面板里搜索联系人，搜索失败后再回退最近会话列表。
+联系人推荐填写抖音主页链接或分享链接。当前流程会优先打开联系人主页并点击主页里的“私信/消息/聊天”入口；如果主页入口不可用，再回退到最近会话昵称匹配。旧的纯昵称联系人仍可读取，但只适合作为最近会话兜底。
+
+如果抖音页面加载慢，优先调大 `timeouts.contact_search_seconds` 和 `timeouts.message_panel_seconds`。
 
 ## 浏览器模式
 

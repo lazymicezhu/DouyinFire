@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .config import DEFAULT_CONFIG_PATH, ConfigError, ensure_runtime_dirs, load_config, parse_config, write_example_config
+from .config import ContactConfig, DEFAULT_CONFIG_PATH, ConfigError, UserConfig, ensure_runtime_dirs, load_config, parse_config, write_example_config
 from .gui_html import HTML
 from .service import service_status, uninstall_service
 from .tasks import login_user, run_all, run_user
@@ -25,9 +25,13 @@ class JobState:
         self.result: Any = None
         self.error = ""
         self.steps = _initial_steps()
+        self.started_at = ""
+        self.ended_at = ""
+        self.last_failed: dict[str, list[dict[str, str]]] = {}
 
     def start(self, kind: str) -> bool:
         with self.lock:
+            preserve_failed = kind.startswith("retry-failed")
             if self.running:
                 return False
             self.running = True
@@ -36,6 +40,10 @@ class JobState:
             self.result = None
             self.error = ""
             self.steps = _initial_steps()
+            self.started_at = _now()
+            self.ended_at = ""
+            if not preserve_failed:
+                self.last_failed = {}
             return True
 
     def finish(self, message: str, result: Any = None, error: str = "") -> None:
@@ -46,6 +54,8 @@ class JobState:
             self.message = message
             self.result = result
             self.error = error
+            self.ended_at = _now()
+            self.last_failed = _failed_contacts_by_user(_as_plain_result(result))
 
     def update_step(self, key: str, status: str, detail: str = "") -> None:
         with self.lock:
@@ -63,8 +73,7 @@ class JobState:
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
             result = self.result
-            if result is not None and hasattr(result, "__dataclass_fields__"):
-                result = asdict(result)
+            result = _as_plain_result(result)
             return {
                 "running": self.running,
                 "kind": self.kind,
@@ -72,6 +81,10 @@ class JobState:
                 "result": result,
                 "error": self.error,
                 "steps": self.steps,
+                "started_at": self.started_at,
+                "ended_at": self.ended_at,
+                "duration_seconds": _duration_seconds(self.started_at, self.ended_at),
+                "last_failed": self.last_failed,
             }
 
     def _mark_running_step(self, status: str, error: str) -> None:
@@ -163,6 +176,9 @@ class GuiServer:
             elif parsed.path == "/api/run-all":
                 self._start_job("run-all", self._run_all)
                 _send_json(request, {"ok": True})
+            elif parsed.path == "/api/retry-failed":
+                self._start_job("retry-failed", self._retry_failed)
+                _send_json(request, {"ok": True})
             elif parsed.path == "/api/service/uninstall":
                 removed = uninstall_service()
                 _send_json(request, {"ok": True, "removed": removed})
@@ -229,6 +245,37 @@ class GuiServer:
     def _run_all(self) -> Any:
         config = load_config(self.config_path)
         return run_all(config, progress=self.job.update_step)
+
+    def _retry_failed(self) -> Any:
+        failed = self.job.snapshot().get("last_failed", {})
+        if not failed:
+            raise ConfigError("没有可重试失败项")
+
+        config = load_config(self.config_path)
+        user_results = []
+        for user_name, contacts_raw in failed.items():
+            if not contacts_raw:
+                continue
+            original = config.user(user_name)
+            retry_user = UserConfig(
+                name=original.name,
+                enabled=original.enabled,
+                message=original.message,
+                contacts=[
+                    ContactConfig(
+                        name=str(item.get("name", "")),
+                        profile_url=str(item.get("profile_url", "")),
+                        message=str(item.get("message", "")),
+                    )
+                    for item in contacts_raw
+                    if str(item.get("name", "")).strip()
+                ],
+            )
+            if retry_user.contacts:
+                user_results.append(run_user(config, retry_user, progress=self.job.update_step))
+        if not user_results:
+            raise ConfigError("没有可重试失败项")
+        return user_results[0] if len(user_results) == 1 else {"users": user_results}
 
     def _config_text(self) -> str:
         if not self.config_path.exists():
@@ -393,6 +440,57 @@ def _step(key: str, label: str) -> dict[str, str]:
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _duration_seconds(started_at: str, ended_at: str = "") -> float:
+    if not started_at:
+        return 0
+    try:
+        start = datetime.fromisoformat(started_at)
+        end = datetime.fromisoformat(ended_at) if ended_at else datetime.now()
+    except ValueError:
+        return 0
+    return max(0.0, (end - start).total_seconds())
+
+
+def _as_plain_result(result: Any) -> Any:
+    if result is not None and is_dataclass(result):
+        return asdict(result)
+    if isinstance(result, list):
+        return [_as_plain_result(item) for item in result]
+    if isinstance(result, dict):
+        return {str(key): _as_plain_result(value) for key, value in result.items()}
+    return result
+
+
+def _failed_contacts_by_user(result: Any) -> dict[str, list[dict[str, str]]]:
+    failed: dict[str, list[dict[str, str]]] = {}
+    if not result:
+        return failed
+
+    if isinstance(result, dict) and "users" in result:
+        users = result.get("users") or []
+    else:
+        users = [result]
+
+    for user in users:
+        if not isinstance(user, dict):
+            continue
+        user_name = str(user.get("user", ""))
+        contacts = []
+        for item in user.get("results", []) or []:
+            if not isinstance(item, dict) or item.get("success"):
+                continue
+            contacts.append(
+                {
+                    "name": str(item.get("contact", "")),
+                    "profile_url": str(item.get("profile_url", "")),
+                    "message": "",
+                }
+            )
+        if user_name and contacts:
+            failed[user_name] = contacts
+    return failed
 
 
 def run_gui(config_path: Path = DEFAULT_CONFIG_PATH, host: str = "127.0.0.1", port: int = 8765) -> None:

@@ -42,16 +42,22 @@ HTML = r"""<!doctype html>
     .bar { height:10px; background:#e7eaee; border-radius:999px; overflow:hidden; margin:8px 0 14px; }
     .bar > div { height:100%; width:0%; background:var(--accent); transition:width .2s ease; }
     .steps { display:grid; gap:7px; margin-bottom:12px; }
-    .step { display:grid; grid-template-columns:150px 78px 76px 1fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:6px 0; }
+    .step { display:grid; grid-template-columns:minmax(0,1fr) 78px 76px; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:8px 0; }
     .badge { width:max-content; border:1px solid var(--line); border-radius:999px; padding:2px 8px; color:var(--muted); }
     .badge.done { color:var(--ok); border-color:#a9dec8; }
     .badge.running { color:var(--warn); border-color:#f2c17e; }
     .badge.failed { color:var(--danger); border-color:#f0b6b0; }
     .progress-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:22px; align-items:start; }
-    .progress-detail { border-left:1px solid var(--line); padding-left:14px; display:grid; gap:8px; }
+    .panel-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .countdown { color:var(--warn); font-variant-numeric:tabular-nums; }
+    .hint { margin-top:6px; color:var(--muted); font-size:12px; }
+    .summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+    .metric { border:1px solid var(--line); border-radius:6px; padding:12px; background:var(--panel); }
+    .metric strong { display:block; font-size:22px; margin-top:4px; }
+    .result-list { display:grid; gap:8px; }
+    .result-row { display:grid; grid-template-columns:1.2fr 90px 1.2fr 1.4fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:8px 0; }
     details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    @media (max-width:900px) { main,.grid,.grid3,.progress-grid { grid-template-columns:1fr; } .progress-detail { border-left:0; padding-left:0; border-top:1px solid var(--line); padding-top:12px; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+    @media (max-width:900px) { main,.grid,.grid3,.progress-grid,.summary,.result-row { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
@@ -121,7 +127,7 @@ HTML = r"""<!doctype html>
             <div class="grid">
               <label><span>用户名称</span><input name="users.0.name"></label>
               <label><span>启用用户</span><select name="users.0.enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
-              <label><span>联系人，每行：备注名 | 主页链接 | 可选消息</span><textarea name="users.0.contacts"></textarea></label>
+              <label><span>联系人，每行：备注名 | 主页链接 | 可选消息</span><textarea name="users.0.contacts"></textarea><div class="hint">示例：呱唧唧呱 | https://www.douyin.com/user/...<br>示例：朋友A | https://v.douyin.com/xxxx/ | 自定义消息<br>第三段消息可省略，省略时使用右侧默认消息。</div></label>
               <label><span>消息内容</span><textarea name="users.0.message"></textarea></label>
             </div>
           </div>
@@ -134,20 +140,22 @@ HTML = r"""<!doctype html>
       </div>
       <div id="tab-logs" class="hidden">
         <div class="panel">
-          <h2>运行进度</h2>
+          <h2 class="panel-title"><span>运行进度</span><span class="muted" id="elapsedText"></span></h2>
           <div class="bar"><div id="progressBar"></div></div>
           <div class="progress-grid">
-            <div>
-            <div class="steps" id="steps"></div>
-            </div>
-            <div class="progress-detail" id="progressDetail"></div>
+            <div class="steps" id="stepsLeft"></div>
+            <div class="steps" id="stepsRight"></div>
           </div>
         </div>
         <div class="row"><button id="reloadLogs">刷新日志</button></div>
         <pre id="logs"></pre>
       </div>
       <div id="tab-result" class="hidden">
-        <pre id="result"></pre>
+        <div class="row">
+          <button id="retryFailed" class="primary">重试失败</button>
+          <span class="muted" id="retryStatus"></span>
+        </div>
+        <div id="result"></div>
       </div>
     </section>
   </main>
@@ -157,6 +165,7 @@ HTML = r"""<!doctype html>
     let formDirty = false;
     let yamlDirty = false;
     let submitting = false;
+    let previousRunning = false;
 
     async function api(path, options = {}) {
       const res = await fetch(path, options);
@@ -165,8 +174,11 @@ HTML = r"""<!doctype html>
       return data;
     }
     async function refresh() {
+      const wasRunning = previousRunning;
       state = await api('/api/state');
+      previousRunning = !!state.job.running;
       renderState();
+      if (wasRunning && !state.job.running && state.job.kind) activateTab('result');
       if (!formDirty) await loadForm();
       if (!yamlDirty) await loadYaml();
       await loadLogs();
@@ -192,23 +204,24 @@ HTML = r"""<!doctype html>
       ].join('');
       $('users').innerHTML = (c.users || []).map(u => `<div class="user"><strong>${esc(u.name)}</strong><div class="muted">${u.enabled ? '启用' : '停用'} · ${u.contacts.length} 个联系人 · 浏览器 profile ${u.profile ? '存在' : '缺失'} · 无头登录态 ${u.storage_state ? '存在' : '缺失'}</div></div>`).join('');
       $('userSelect').innerHTML = (c.users || []).map(u => `<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
-      $('result').textContent = JSON.stringify(state.job, null, 2);
+      renderResult(state.job);
       renderSteps(state.job.steps || []);
       document.querySelectorAll('button').forEach(b => { if (!['refresh'].includes(b.id)) b.disabled = state.job.running || submitting; });
       $('refresh').disabled = false;
+      const failed = resultRows(state.job.result).filter(r => !r.success).length;
+      $('retryFailed').disabled = state.job.running || submitting || failed === 0;
     }
     function renderSteps(steps) {
       const done = steps.filter(s => s.status === 'done').length;
       const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
       $('progressBar').style.width = pct + '%';
-      $('steps').innerHTML = steps.map(s => `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span><span class="muted">${esc(s.detail || s.error || '')}</span></div>`).join('');
-      const active = steps.find(s => s.status === 'running') || steps.find(s => s.status === 'failed') || steps.slice().reverse().find(s => s.status === 'done') || {};
-      $('progressDetail').innerHTML = [
-        row('当前步骤', active.label || '等待'),
-        row('状态', statusName(active.status || 'pending')),
-        row('倒计时', countdownText(active) || ''),
-        row('详情', active.detail || active.error || '')
-      ].join('');
+      $('elapsedText').textContent = state?.job?.started_at ? `已执行 ${formatDuration(state.job.duration_seconds || 0)}` : '';
+      const leftKeys = new Set(['open_home','open_messages','open_contact_profile','profile_message_entry','contact_recent_list']);
+      $('stepsLeft').innerHTML = steps.filter(s => leftKeys.has(s.key)).map(stepHtml).join('');
+      $('stepsRight').innerHTML = steps.filter(s => !leftKeys.has(s.key)).map(stepHtml).join('');
+    }
+    function stepHtml(s) {
+      return `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span></div>`;
     }
     function rerenderCountdowns() {
       if (!state?.job?.steps) return;
@@ -216,6 +229,7 @@ HTML = r"""<!doctype html>
         const el = document.querySelector(`[data-step="${CSS.escape(s.key)}"]`);
         if (el) el.textContent = countdownText(s);
       }
+      if (state.job.started_at) $('elapsedText').textContent = `已执行 ${formatDuration(elapsedSeconds(state.job.started_at, state.job.ended_at))}`;
     }
     function countdownText(step) {
       if (step.status !== 'running' || !step.started_at) return '';
@@ -223,6 +237,15 @@ HTML = r"""<!doctype html>
       if (!expected) return '';
       const elapsed = (Date.now() - Date.parse(step.started_at)) / 1000;
       return Math.max(0, expected - elapsed).toFixed(1) + 's';
+    }
+    function elapsedSeconds(startedAt, endedAt) {
+      const end = endedAt ? Date.parse(endedAt) : Date.now();
+      return Math.max(0, (end - Date.parse(startedAt)) / 1000);
+    }
+    function formatDuration(seconds) {
+      const value = Number(seconds) || 0;
+      if (value >= 60) return (value / 60).toFixed(1) + ' 分钟';
+      return value.toFixed(1) + ' 秒';
     }
     function expectedSeconds(key) {
       const t = state?.config?.timeouts || {};
@@ -291,6 +314,42 @@ HTML = r"""<!doctype html>
       }).join('\n');
     }
     function statusName(v) { return ({pending:'等待', running:'运行中', done:'完成', failed:'失败'}[v] || v); }
+    function renderResult(job) {
+      const rows = resultRows(job.result);
+      const total = rows.length;
+      const success = rows.filter(r => r.success).length;
+      const failed = rows.filter(r => !r.success).length;
+      const skipped = rows.filter(r => r.skipped).length;
+      $('result').innerHTML = `
+        <div class="summary">
+          ${metric('总数', total)}
+          ${metric('成功', success)}
+          ${metric('失败', failed)}
+          ${metric('跳过', skipped)}
+          ${metric('耗时', formatDuration(job.duration_seconds || 0))}
+        </div>
+        <div class="panel">
+          <h2>联系人结果</h2>
+          <div class="result-list">
+            ${rows.length ? rows.map(resultRow).join('') : '<div class="muted">暂无运行结果</div>'}
+          </div>
+        </div>`;
+    }
+    function resultUsers(result) {
+      if (!result) return [];
+      if (Array.isArray(result)) return result;
+      if (Array.isArray(result.users)) return result.users;
+      if (Array.isArray(result.results)) return [result];
+      return [];
+    }
+    function resultRows(result) {
+      return resultUsers(result).flatMap(u => (u.results || []).map(item => ({...item, user:u.user})));
+    }
+    function metric(label, value) { return `<div class="metric"><span class="muted">${esc(label)}</span><strong>${esc(value)}</strong></div>`; }
+    function resultRow(row) {
+      const status = row.success ? (row.skipped ? '跳过' : '成功') : '失败';
+      return `<div class="result-row"><strong>${esc(row.contact || '')}</strong><span class="badge ${row.success ? 'done' : 'failed'}">${status}</span><span class="muted">${esc(row.reason || '')}</span><span class="muted">${esc(row.profile_url || '')}</span></div>`;
+    }
     function row(k, v) { return `<div class="line"><span>${esc(k)}</span><span class="muted">${esc(String(v || ''))}</span></div>`; }
     function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
     async function loadLogs() {
@@ -334,6 +393,11 @@ HTML = r"""<!doctype html>
     $('login').onclick = () => { activateTab('logs'); post('/api/login', { user:$('userSelect').value, wait_seconds:180 }); };
     $('runUser').onclick = () => { activateTab('logs'); post('/api/run', { user:$('userSelect').value }); };
     $('runAll').onclick = () => { activateTab('logs'); post('/api/run-all'); };
+    $('retryFailed').onclick = async () => {
+      $('retryStatus').textContent = '';
+      try { activateTab('logs'); await post('/api/retry-failed'); }
+      catch (e) { $('retryStatus').textContent = e.message; }
+    };
     $('uninstall').onclick = () => post('/api/service/uninstall');
     $('configForm').addEventListener('input', () => formDirty = true);
     $('configText').addEventListener('input', () => yamlDirty = true);
