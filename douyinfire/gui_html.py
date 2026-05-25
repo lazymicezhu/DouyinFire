@@ -7,14 +7,14 @@ HTML = r"""<!doctype html>
   <style>
     :root { color-scheme: light; --bg:#f6f7f8; --panel:#fff; --text:#202428; --muted:#66707a; --line:#d9dee3; --accent:#0f766e; --danger:#b42318; --ok:#12805c; --warn:#a15c00; }
     * { box-sizing: border-box; }
-    body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
     header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
     h1 { font-size:18px; margin:0; letter-spacing:0; }
     h2 { font-size:15px; margin:0 0 10px; }
     h3 { font-size:14px; margin:18px 0 10px; }
-    main { display:grid; grid-template-columns:320px minmax(0,1fr); min-height:calc(100vh - 57px); }
-    aside { border-right:1px solid var(--line); padding:16px; background:#fbfbfc; }
-    section { padding:16px 20px; }
+    main { display:grid; grid-template-columns:320px minmax(0,1fr); height:calc(100vh - 57px); overflow:hidden; }
+    aside { border-right:1px solid var(--line); padding:16px; background:#fbfbfc; overflow-y:auto; }
+    section { padding:16px 20px; overflow-y:auto; }
     button, select, input, textarea { border:1px solid var(--line); border-radius:6px; font:inherit; background:var(--panel); color:var(--text); }
     button, select { height:34px; padding:0 10px; }
     button.primary { background:var(--accent); border-color:var(--accent); color:white; }
@@ -77,6 +77,7 @@ HTML = r"""<!doctype html>
       <div class="row">
         <select id="userSelect"></select>
         <button id="login">登录</button>
+        <button id="loginNew">登录新账号</button>
         <button id="runUser" class="primary">运行用户</button>
         <button id="runAll">运行全部</button>
       </div>
@@ -391,6 +392,12 @@ HTML = r"""<!doctype html>
     };
     $('initConfig').onclick = () => post('/api/init', { overwrite:true });
     $('login').onclick = () => { activateTab('logs'); post('/api/login', { user:$('userSelect').value, wait_seconds:180 }); };
+    $('loginNew').onclick = () => {
+      const user = prompt('请输入新账号名称，例如 main、Lazymice 或工作号');
+      if (!user || !user.trim()) return;
+      activateTab('logs');
+      post('/api/login-new', { user:user.trim(), source:$('userSelect').value, wait_seconds:180 });
+    };
     $('runUser').onclick = () => { activateTab('logs'); post('/api/run', { user:$('userSelect').value }); };
     $('runAll').onclick = () => { activateTab('logs'); post('/api/run-all'); };
     $('retryFailed').onclick = async () => {

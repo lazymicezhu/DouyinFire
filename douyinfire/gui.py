@@ -169,6 +169,13 @@ class GuiServer:
                 wait_seconds = int(payload.get("wait_seconds", 180))
                 self._start_job(f"login:{user}", lambda: self._login(user, wait_seconds))
                 _send_json(request, {"ok": True})
+            elif parsed.path == "/api/login-new":
+                user = str(payload.get("user", "")).strip()
+                source = str(payload.get("source", "")).strip()
+                wait_seconds = int(payload.get("wait_seconds", 180))
+                self._add_login_user(user, source)
+                self._start_job(f"login:{user}", lambda: self._login(user, wait_seconds))
+                _send_json(request, {"ok": True})
             elif parsed.path == "/api/run":
                 user = str(payload.get("user", "")).strip()
                 self._start_job(f"run:{user}", lambda: self._run_user(user))
@@ -202,7 +209,7 @@ class GuiServer:
                         "enabled": user.enabled,
                         "contacts": [asdict(contact) for contact in user.contacts],
                         "profile": (config.data_dir / "profiles" / user.name).exists(),
-                        "storage_state": config.browser.storage_state_path.exists(),
+                        "storage_state": _storage_state_path_for_user(config.browser.storage_state_path, user.name).exists(),
                     }
                     for user in config.users
                 ],
@@ -237,6 +244,35 @@ class GuiServer:
         config = load_config(self.config_path)
         login_user(config, config.user(user_name), wait_seconds=wait_seconds)
         return {"user": user_name, "status": "login window closed"}
+
+    def _add_login_user(self, user_name: str, source_name: str = "") -> None:
+        if not user_name:
+            raise ConfigError("请输入用户名")
+
+        config = load_config(self.config_path)
+        if any(user.name == user_name for user in config.users):
+            return
+
+        source = config.user(source_name) if source_name else config.users[0]
+        users = list(config.users)
+        users.append(
+            UserConfig(
+                name=user_name,
+                enabled=True,
+                contacts=[
+                    ContactConfig(name=contact.name, profile_url=contact.profile_url, message=contact.message)
+                    for contact in source.contacts
+                ],
+                message=source.message,
+            )
+        )
+
+        data = _config_to_yaml_data(config, users)
+        data["browser"]["storage_state_path"] = "data/states/{user}.json"
+        text = _dump_yaml(data)
+        load_config_from_text(text, self.config_path)
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.config_path.write_text(text, encoding="utf-8")
 
     def _run_user(self, user_name: str) -> Any:
         config = load_config(self.config_path)
@@ -417,6 +453,35 @@ def _browser_to_json(browser: Any) -> dict[str, Any]:
         "login_headless": browser.login_headless,
         "storage_state_path": str(browser.storage_state_path),
     }
+
+
+def _storage_state_path_for_user(path: Path, user_name: str) -> Path:
+    raw = str(path)
+    if "{user}" in raw:
+        return Path(raw.format(user=user_name))
+    return path
+
+
+def _config_to_yaml_data(config: Any, users: list[UserConfig]) -> dict[str, Any]:
+    return {
+        "data_dir": str(config.data_dir),
+        "log_dir": str(config.log_dir),
+        "screenshot_dir": str(config.screenshot_dir),
+        "headless": config.headless,
+        "failure_notify_threshold": config.failure_notify_threshold,
+        "schedule": asdict(config.schedule),
+        "timeouts": asdict(config.timeouts),
+        "browser": _browser_to_json(config.browser),
+        "users": [asdict(user) for user in users],
+    }
+
+
+def _dump_yaml(data: dict[str, Any]) -> str:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ConfigError("PyYAML is required for YAML config files.") from exc
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
 
 
 def _initial_steps() -> list[dict[str, str]]:

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from douyinfire.config import ConfigError
+from douyinfire.config import load_config
 from douyinfire.gui import GuiServer, JobState
 from douyinfire.tasks import ContactResult, UserRunResult
 
@@ -60,3 +61,36 @@ def test_retry_failed_requires_failed_contacts() -> None:
 
     with pytest.raises(ConfigError, match="没有可重试失败项"):
         server._retry_failed()
+
+
+def test_add_login_user_appends_user_and_uses_user_state(tmp_path: Path) -> None:
+    config_path = tmp_path / "config" / "douyinfire.yaml"
+    config_path.parent.mkdir()
+    config_path.write_text(
+        """
+data_dir: data
+log_dir: logs
+screenshot_dir: screenshots
+browser:
+  backend: cloakbrowser
+  run_headless: true
+  login_headless: false
+  storage_state_path: data/states/main.json
+users:
+  - name: main
+    enabled: true
+    contacts:
+      - name: friend
+        profile_url: https://www.douyin.com/user/friend
+    message: hello
+""",
+        encoding="utf-8",
+    )
+    server = GuiServer(config_path)
+
+    server._add_login_user("work", "main")
+    config = load_config(config_path)
+
+    assert [user.name for user in config.users] == ["main", "work"]
+    assert str(config.browser.storage_state_path).endswith("data/states/{user}.json")
+    assert config.user("work").contacts[0].name == "friend"
