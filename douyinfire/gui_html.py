@@ -42,13 +42,15 @@ HTML = r"""<!doctype html>
     .bar { height:10px; background:#e7eaee; border-radius:999px; overflow:hidden; margin:8px 0 14px; }
     .bar > div { height:100%; width:0%; background:var(--accent); transition:width .2s ease; }
     .steps { display:grid; gap:7px; margin-bottom:12px; }
-    .step { display:grid; grid-template-columns:170px 86px 1fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:6px 0; }
+    .step { display:grid; grid-template-columns:150px 78px 76px 1fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:6px 0; }
     .badge { width:max-content; border:1px solid var(--line); border-radius:999px; padding:2px 8px; color:var(--muted); }
     .badge.done { color:var(--ok); border-color:#a9dec8; }
     .badge.running { color:var(--warn); border-color:#f2c17e; }
     .badge.failed { color:var(--danger); border-color:#f0b6b0; }
+    .logs-grid { display:grid; grid-template-columns:minmax(320px, .9fr) minmax(0, 1.1fr); gap:14px; align-items:start; }
+    .countdown { color:var(--warn); font-variant-numeric:tabular-nums; }
     details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    @media (max-width:900px) { main,.grid,.grid3 { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+    @media (max-width:900px) { main,.grid,.grid3,.logs-grid { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
   </style>
 </head>
 <body>
@@ -130,11 +132,17 @@ HTML = r"""<!doctype html>
         </form>
       </div>
       <div id="tab-logs" class="hidden">
-        <h2>运行进度</h2>
-        <div class="bar"><div id="progressBar"></div></div>
-        <div class="steps" id="steps"></div>
-        <div class="row"><button id="reloadLogs">刷新日志</button></div>
-        <pre id="logs"></pre>
+        <div class="logs-grid">
+          <div class="panel">
+            <h2>运行进度</h2>
+            <div class="bar"><div id="progressBar"></div></div>
+            <div class="steps" id="steps"></div>
+          </div>
+          <div>
+            <div class="row"><button id="reloadLogs">刷新日志</button></div>
+            <pre id="logs"></pre>
+          </div>
+        </div>
       </div>
       <div id="tab-result" class="hidden">
         <pre id="result"></pre>
@@ -146,6 +154,7 @@ HTML = r"""<!doctype html>
     let state = null;
     let formDirty = false;
     let yamlDirty = false;
+    let submitting = false;
 
     async function api(path, options = {}) {
       const res = await fetch(path, options);
@@ -183,14 +192,42 @@ HTML = r"""<!doctype html>
       $('userSelect').innerHTML = (c.users || []).map(u => `<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
       $('result').textContent = JSON.stringify(state.job, null, 2);
       renderSteps(state.job.steps || []);
-      document.querySelectorAll('button').forEach(b => { if (!['refresh'].includes(b.id)) b.disabled = state.job.running; });
+      document.querySelectorAll('button').forEach(b => { if (!['refresh'].includes(b.id)) b.disabled = state.job.running || submitting; });
       $('refresh').disabled = false;
     }
     function renderSteps(steps) {
       const done = steps.filter(s => s.status === 'done').length;
       const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
       $('progressBar').style.width = pct + '%';
-      $('steps').innerHTML = steps.map(s => `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="muted">${esc(s.detail || s.error || '')}</span></div>`).join('');
+      $('steps').innerHTML = steps.map(s => `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span><span class="muted">${esc(s.detail || s.error || '')}</span></div>`).join('');
+    }
+    function rerenderCountdowns() {
+      if (!state?.job?.steps) return;
+      for (const s of state.job.steps) {
+        const el = document.querySelector(`[data-step="${CSS.escape(s.key)}"]`);
+        if (el) el.textContent = countdownText(s);
+      }
+    }
+    function countdownText(step) {
+      if (step.status !== 'running' || !step.started_at) return '';
+      const expected = expectedSeconds(step.key);
+      if (!expected) return '';
+      const elapsed = (Date.now() - Date.parse(step.started_at)) / 1000;
+      return Math.max(0, expected - elapsed).toFixed(1) + 's';
+    }
+    function expectedSeconds(key) {
+      const t = state?.config?.timeouts || {};
+      return ({
+        open_home: t.home_ready_seconds,
+        open_messages: t.message_panel_seconds,
+        contact_search: t.contact_search_seconds,
+        contact_recent_list: t.contact_search_seconds,
+        open_conversation: t.contact_search_seconds,
+        input_box: t.input_box_seconds,
+        input_message: 1,
+        press_enter: t.after_send_seconds,
+        done: 1
+      })[key] || 0;
     }
     function fillForm(c) {
       setVal('data_dir', c.data_dir);
@@ -245,8 +282,15 @@ HTML = r"""<!doctype html>
       $('logs').textContent = data.text || '';
     }
     async function post(path, payload = {}) {
-      await api(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-      await refresh();
+      submitting = true;
+      renderState();
+      try {
+        await api(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        await refresh();
+      } finally {
+        submitting = false;
+        if (state) renderState();
+      }
     }
     function activateTab(name) {
       document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -280,6 +324,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => activateTab(btn.dataset.tab));
     refresh();
     setInterval(refresh, 2500);
+    setInterval(rerenderCountdowns, 100);
   </script>
 </body>
 </html>

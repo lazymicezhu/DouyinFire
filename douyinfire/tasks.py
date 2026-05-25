@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
@@ -19,6 +19,7 @@ class ContactResult:
     contact: str
     success: bool
     reason: str = ""
+    skipped: bool = False
 
 
 @dataclass(slots=True)
@@ -110,7 +111,13 @@ def run_user(
             progress=progress,
         ) as browser:
             for contact in user.contacts:
-                result = _send_contact(browser, user, contact, current_run)
+                if _recently_sent(config, user, contact):
+                    logging.info("Skipping duplicate send user=%s contact=%s", user.name, contact)
+                    result = ContactResult(contact=contact, success=True, reason="最近已发送，跳过重复", skipped=True)
+                else:
+                    result = _send_contact(browser, user, contact, current_run)
+                    if result.success and not result.skipped:
+                        _record_sent(config, user, contact)
                 results.append(result)
                 time.sleep(config.schedule.min_contact_interval_seconds)
     except BrowserError as exc:
@@ -171,3 +178,41 @@ def _storage_state_path(config: AppConfig, user: UserConfig) -> Path:
     if "{user}" in raw:
         return Path(raw.format(user=user.name))
     return config.browser.storage_state_path
+
+
+def _recently_sent(config: AppConfig, user: UserConfig, contact: str, cooldown_seconds: int = 180) -> bool:
+    record = _sent_records(config)
+    key = _sent_key(user, contact)
+    value = record.get(key)
+    if not value:
+        return False
+    try:
+        sent_at = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return datetime.now() - sent_at < timedelta(seconds=cooldown_seconds)
+
+
+def _record_sent(config: AppConfig, user: UserConfig, contact: str) -> None:
+    path = config.data_dir / "last_sent.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = _sent_records(config)
+    record[_sent_key(user, contact)] = datetime.now().isoformat(timespec="seconds")
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _sent_records(config: AppConfig) -> dict[str, str]:
+    path = config.data_dir / "last_sent.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items()}
+
+
+def _sent_key(user: UserConfig, contact: str) -> str:
+    return f"{user.name}:{contact}:{user.message}"
