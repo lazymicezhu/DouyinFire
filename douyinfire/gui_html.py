@@ -61,6 +61,9 @@ HTML = r"""<!doctype html>
     .result-screenshot { display:grid; gap:8px; }
     .result-screenshot img { width:100%; max-height:560px; object-fit:contain; border:1px solid var(--line); border-radius:6px; background:#fff; }
     .contact-editor { display:grid; gap:8px; grid-column:1 / -1; }
+    .contact-title { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+    .contact-title h3 { margin-bottom:0; }
+    .contact-note { color:var(--muted); font-size:12px; font-weight:400; }
     .contact-head,.contact-row { display:grid; grid-template-columns:1fr 1.4fr 1.4fr 34px; gap:8px; align-items:center; }
     .contact-head { color:var(--muted); font-weight:600; font-size:12px; }
     .contact-row button { width:34px; padding:0; color:var(--danger); }
@@ -138,7 +141,10 @@ HTML = r"""<!doctype html>
               <label><span>启用用户</span><select name="users.0.enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
               <label style="grid-column:1 / -1"><span>全局消息</span><textarea name="users.0.message"></textarea><div class="hint">联系人没有自选消息时，发送这里的内容。</div></label>
               <div class="contact-editor">
-                <h3>联系人</h3>
+                <div class="contact-title">
+                  <h3>联系人</h3>
+                  <span class="contact-note">请将需要发送消息的联系人置顶，建议只设置8位以下的联系人，超出失败风险会提高</span>
+                </div>
                 <div class="contact-head"><span>联系人</span><span>主页链接（可空）</span><span>自选消息（可空）</span><span></span></div>
                 <div id="contactRows"></div>
                 <button type="button" id="addContact" class="icon-button" title="新增联系人">+</button>

@@ -211,6 +211,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
         self._check_interrupted()
         self._open_messages(page)
+        page.wait_for_timeout(3000)
         return self.screenshot(screenshot_name)
 
     def _require_page(self) -> Any:
