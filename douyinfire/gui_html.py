@@ -64,7 +64,7 @@ HTML = r"""<!doctype html>
     .contact-title { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
     .contact-title h3 { margin-bottom:0; }
     .contact-note { color:var(--muted); font-size:12px; font-weight:400; }
-    .contact-head,.contact-row { display:grid; grid-template-columns:1fr 1.4fr 1.4fr 34px; gap:8px; align-items:center; }
+    .contact-head,.contact-row { display:grid; grid-template-columns:1fr 1.4fr 34px; gap:8px; align-items:center; }
     .contact-head { color:var(--muted); font-weight:600; font-size:12px; }
     .contact-row button { width:34px; padding:0; color:var(--danger); }
     .icon-button { width:34px; padding:0; font-size:18px; line-height:1; }
@@ -145,7 +145,7 @@ HTML = r"""<!doctype html>
                   <h3>联系人</h3>
                   <span class="contact-note">请将需要发送消息的联系人置顶，建议只设置8位以下的联系人，超出失败风险会提高</span>
                 </div>
-                <div class="contact-head"><span>联系人</span><span>主页链接（可空）</span><span>自选消息（可空）</span><span></span></div>
+                <div class="contact-head"><span>联系人</span><span>自选消息（可空）</span><span></span></div>
                 <div id="contactRows"></div>
                 <button type="button" id="addContact" class="icon-button" title="新增联系人">+</button>
               </div>
@@ -237,9 +237,11 @@ HTML = r"""<!doctype html>
       const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
       $('progressBar').style.width = pct + '%';
       $('elapsedText').textContent = state?.job?.started_at ? `已执行 ${formatDuration(state.job.duration_seconds || 0)}` : '';
-      const leftKeys = new Set(['open_home','open_messages','open_contact_profile','profile_message_entry','contact_recent_list']);
-      $('stepsLeft').innerHTML = steps.filter(s => leftKeys.has(s.key)).map(stepHtml).join('');
-      $('stepsRight').innerHTML = steps.filter(s => !leftKeys.has(s.key)).map(stepHtml).join('');
+      const byKey = new Map(steps.map(step => [step.key, step]));
+      const leftKeys = ['open_home','open_messages','contact_recent_list','open_conversation'];
+      const rightKeys = ['input_box','input_message','press_enter','done'];
+      $('stepsLeft').innerHTML = leftKeys.map(key => byKey.get(key)).filter(Boolean).map(stepHtml).join('');
+      $('stepsRight').innerHTML = rightKeys.map(key => byKey.get(key)).filter(Boolean).map(stepHtml).join('');
     }
     function stepHtml(s) {
       return `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span></div>`;
@@ -264,17 +266,16 @@ HTML = r"""<!doctype html>
       return Math.max(0, (end - Date.parse(startedAt)) / 1000);
     }
     function formatDuration(seconds) {
-      const value = Number(seconds) || 0;
-      if (value >= 60) return (value / 60).toFixed(1) + ' 分钟';
-      return value.toFixed(1) + ' 秒';
+      const total = Math.max(0, Math.floor(Number(seconds) || 0));
+      const minutes = Math.floor(total / 60);
+      const rest = total % 60;
+      return minutes ? `${minutes}m${rest}s` : `${rest}s`;
     }
     function expectedSeconds(key) {
       const t = state?.config?.timeouts || {};
       return ({
         open_home: t.home_ready_seconds,
         open_messages: t.message_panel_seconds,
-        open_contact_profile: t.home_ready_seconds,
-        profile_message_entry: t.contact_search_seconds,
         contact_recent_list: t.contact_search_seconds,
         open_conversation: t.contact_search_seconds,
         input_box: t.input_box_seconds,
@@ -329,14 +330,13 @@ HTML = r"""<!doctype html>
     function setVal(name, value) { const el = document.querySelector(`[name="${name}"]`); if (el) el.value = value ?? ''; }
     function val(name) { const el = document.querySelector(`[name="${name}"]`); return el ? el.value : ''; }
     function renderContactRows(contacts) {
-      const normalized = (contacts || []).map(c => typeof c === 'string' ? { name:c, profile_url:'', message:'' } : c);
-      const rows = normalized.length ? normalized : [{ name:'', profile_url:'', message:'' }];
+      const normalized = (contacts || []).map(c => typeof c === 'string' ? { name:c, message:'' } : c);
+      const rows = normalized.length ? normalized : [{ name:'', message:'' }];
       $('contactRows').innerHTML = rows.map(contactRowHtml).join('');
     }
     function contactRowHtml(contact = {}) {
       return `<div class="contact-row">
         <input data-contact-field="name" value="${escAttr(contact.name || '')}" placeholder="联系人">
-        <input data-contact-field="profile_url" value="${escAttr(contact.profile_url || '')}" placeholder="https://www.douyin.com/user/...">
         <input data-contact-field="message" value="${escAttr(contact.message || '')}" placeholder="留空使用全局消息">
         <button type="button" data-remove-contact title="删除联系人">×</button>
       </div>`;
@@ -344,7 +344,6 @@ HTML = r"""<!doctype html>
     function collectContacts() {
       return Array.from(document.querySelectorAll('.contact-row')).map(row => ({
         name: row.querySelector('[data-contact-field="name"]').value.trim(),
-        profile_url: row.querySelector('[data-contact-field="profile_url"]').value.trim(),
         message: row.querySelector('[data-contact-field="message"]').value.trim()
       })).filter(contact => contact.name);
     }
@@ -398,7 +397,7 @@ HTML = r"""<!doctype html>
     function metric(label, value) { return `<div class="metric"><span class="muted">${esc(label)}</span><strong>${esc(value)}</strong></div>`; }
     function resultRow(row) {
       const status = row.success ? (row.skipped ? '跳过' : '成功') : '失败';
-      return `<div class="result-row"><strong>${esc(row.contact || '')}</strong><span class="badge ${row.success ? 'done' : 'failed'}">${status}</span><span class="muted">${esc(row.reason || '')}</span><span class="muted">${esc(row.profile_url || '')}</span></div>`;
+      return `<div class="result-row"><strong>${esc(row.contact || '')}</strong><span class="badge ${row.success ? 'done' : 'failed'}">${status}</span><span class="muted">${esc(row.reason || '')}</span><span class="muted"></span></div>`;
     }
     function resultScreenshot(item) {
       const src = `/api/screenshot?path=${encodeURIComponent(item.path)}`;

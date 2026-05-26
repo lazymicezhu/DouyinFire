@@ -35,7 +35,7 @@ def test_user_run_result_does_not_count_interrupted_skips_as_failures() -> None:
 
 
 def test_recently_sent_tracks_user_contact_and_message(tmp_path: Path) -> None:
-    contact_a = ContactConfig(name="a", profile_url="https://www.douyin.com/user/a")
+    contact_a = ContactConfig(name="a")
     contact_b = ContactConfig(name="b")
     user = UserConfig(name="main", contacts=[contact_a], message="hello")
     config = AppConfig(users=[user], data_dir=tmp_path)

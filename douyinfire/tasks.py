@@ -66,10 +66,16 @@ def setup_logging(config: AppConfig) -> None:
 
 
 ProgressCallback = Callable[[str, str, str], None]
+ResetProgressCallback = Callable[[], None]
 StopCallback = Callable[[], bool]
 
 
-def run_all(config: AppConfig, progress: ProgressCallback | None = None, should_stop: StopCallback | None = None) -> RunResult:
+def run_all(
+    config: AppConfig,
+    progress: ProgressCallback | None = None,
+    reset_progress: ResetProgressCallback | None = None,
+    should_stop: StopCallback | None = None,
+) -> RunResult:
     ensure_runtime_dirs(config)
     setup_logging(config)
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8]
@@ -81,7 +87,7 @@ def run_all(config: AppConfig, progress: ProgressCallback | None = None, should_
         if should_stop and should_stop():
             logging.info("Run interrupted before user: %s", user.name)
             break
-        user_results.append(run_user(config, user, run_id, progress=progress, should_stop=should_stop))
+        user_results.append(run_user(config, user, run_id, progress=progress, reset_progress=reset_progress, should_stop=should_stop))
     result = RunResult(run_id=run_id, started_at=started_at, ended_at=_now(), users=user_results)
     _write_run_record(config, result)
 
@@ -97,6 +103,7 @@ def run_user(
     user: UserConfig,
     run_id: str | None = None,
     progress: ProgressCallback | None = None,
+    reset_progress: ResetProgressCallback | None = None,
     should_stop: StopCallback | None = None,
 ) -> UserRunResult:
     ensure_runtime_dirs(config)
@@ -122,6 +129,8 @@ def run_user(
             should_stop=should_stop,
         ) as browser:
             for index, contact in enumerate(user.contacts):
+                if reset_progress:
+                    reset_progress()
                 if should_stop and should_stop():
                     logging.info("User run interrupted before contact user=%s contact=%s", user.name, contact.name)
                     _append_interrupted_results(results, user.contacts[index:])

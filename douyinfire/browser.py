@@ -159,7 +159,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
 
             self._check_interrupted()
             self._step_start("open_conversation", contact)
-            self._open_contact(page, contact, profile_url)
+            self._open_contact(page, contact)
             self._check_interrupted()
             self._step_done("open_conversation", contact)
             self._write_contact_metadata(screenshot_prefix, contact, profile_url)
@@ -234,52 +234,11 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         _click_first_visible(candidates, "message entry", timeout_seconds=self.timeouts.message_panel_seconds)
         page.wait_for_timeout(self.timeouts.message_panel_seconds * 1000)
 
-    def _open_contact(self, page: Any, contact: str, profile_url: str = "") -> None:
-        profile_error: Exception | None = None
-        if profile_url:
-            try:
-                self._open_contact_from_profile(page, contact, profile_url)
-                self._step_done("contact_recent_list", "未使用最近会话兜底")
-                return
-            except Exception as exc:
-                profile_error = exc
-                logging.warning("Contact profile navigation failed contact=%s url=%s reason=%s; falling back to recent list", contact, profile_url, exc)
-                self._step_done("profile_message_entry", f"主页私信入口失败，回退最近会话: {exc}")
-
+    def _open_contact(self, page: Any, contact: str) -> None:
         try:
             self._open_contact_from_recent_list(page, contact)
         except Exception as exc:
-            if profile_url:
-                raise BrowserError(f"未能通过主页链接或最近会话找到联系人 {contact}: profile={profile_error}; recent={exc}") from exc
-            raise BrowserError(f"未能在最近会话中找到联系人 {contact}，且未配置主页链接: recent={exc}") from exc
-
-    def _open_contact_from_profile(self, page: Any, contact: str, profile_url: str) -> None:
-        self._step_start("open_contact_profile", profile_url)
-        logging.info("Opening contact profile contact=%s url=%s", contact, profile_url)
-        page.goto(profile_url, wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
-        self._step_done("open_contact_profile", page.url)
-
-        self._step_start("profile_message_entry", contact)
-        candidates = [
-            page.get_by_text("私信", exact=True),
-            page.get_by_text("消息", exact=True),
-            page.get_by_text("聊天", exact=True),
-            page.get_by_role("button", name="私信"),
-            page.get_by_role("button", name="消息"),
-            page.get_by_role("button", name="聊天"),
-            page.locator("button").filter(has_text="私信").first,
-            page.locator("button").filter(has_text="消息").first,
-            page.locator("button").filter(has_text="聊天").first,
-            page.locator("a").filter(has_text="私信").first,
-            page.locator("a").filter(has_text="消息").first,
-            page.locator("a").filter(has_text="聊天").first,
-            page.locator("[href*='message']").first,
-            page.locator("[href*='im']").first,
-        ]
-        _click_first_visible(candidates, f"profile message entry {contact}", timeout_seconds=self.timeouts.contact_search_seconds)
-        page.wait_for_timeout(1000)
-        self._step_done("profile_message_entry", contact)
+            raise BrowserError(f"未能在最近会话中找到联系人 {contact}，请先将联系人置顶: recent={exc}") from exc
 
     def _open_contact_from_recent_list(self, page: Any, contact: str) -> None:
         self._step_start("contact_recent_list", contact)

@@ -130,14 +130,15 @@ def test_form_payload_to_yaml_round_trips() -> None:
                 "jitter_minutes": 20,
                 "min_contact_interval_seconds": 10,
             },
-            "users": [{"name": "main", "enabled": True, "contacts": "a | https://www.douyin.com/user/a\nb", "message": "hello"}],
+            "users": [{"name": "main", "enabled": True, "contacts": "a | custom\nb", "message": "hello"}],
         }
     )
     config = parse_config(__import__("yaml").safe_load(text))
 
     assert config.browser.backend == "cloakbrowser"
     assert config.users[0].contacts[0].name == "a"
-    assert config.users[0].contacts[0].profile_url == "https://www.douyin.com/user/a"
+    assert config.users[0].contacts[0].profile_url == ""
+    assert config.users[0].contacts[0].message == "custom"
     assert config.users[0].contacts[1].name == "b"
 
 
@@ -149,8 +150,8 @@ def test_form_payload_accepts_structured_contact_rows() -> None:
                     "name": "main",
                     "enabled": True,
                     "contacts": [
-                        {"name": "呱唧唧呱", "profile_url": "", "message": "测试可选消息"},
-                        {"name": "朋友A", "profile_url": "https://www.douyin.com/user/a", "message": ""},
+                        {"name": "呱唧唧呱", "message": "测试可选消息"},
+                        {"name": "朋友A", "message": ""},
                     ],
                     "message": "全局消息",
                 }

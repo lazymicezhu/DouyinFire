@@ -84,6 +84,10 @@ class JobState:
                         step["ended_at"] = now
                     return
 
+    def reset_steps(self) -> None:
+        with self.lock:
+            self.steps = _initial_steps()
+
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
             result = self.result
@@ -285,7 +289,7 @@ class GuiServer:
                 name=user_name,
                 enabled=True,
                 contacts=[
-                    ContactConfig(name=contact.name, profile_url=contact.profile_url, message=contact.message)
+                    ContactConfig(name=contact.name, message=contact.message)
                     for contact in source.contacts
                 ],
                 message=source.message,
@@ -301,11 +305,11 @@ class GuiServer:
 
     def _run_user(self, user_name: str) -> Any:
         config = load_config(self.config_path)
-        return run_user(config, config.user(user_name), progress=self.job.update_step, should_stop=self.job.is_interrupted)
+        return run_user(config, config.user(user_name), progress=self.job.update_step, reset_progress=self.job.reset_steps, should_stop=self.job.is_interrupted)
 
     def _run_all(self) -> Any:
         config = load_config(self.config_path)
-        return run_all(config, progress=self.job.update_step, should_stop=self.job.is_interrupted)
+        return run_all(config, progress=self.job.update_step, reset_progress=self.job.reset_steps, should_stop=self.job.is_interrupted)
 
     def _retry_failed(self) -> Any:
         failed = self.job.snapshot().get("last_failed", {})
@@ -325,7 +329,6 @@ class GuiServer:
                 contacts=[
                     ContactConfig(
                         name=str(item.get("name", "")),
-                        profile_url=str(item.get("profile_url", "")),
                         message=str(item.get("message", "")),
                     )
                     for item in contacts_raw
@@ -333,7 +336,7 @@ class GuiServer:
                 ],
             )
             if retry_user.contacts:
-                user_results.append(run_user(config, retry_user, progress=self.job.update_step, should_stop=self.job.is_interrupted))
+                user_results.append(run_user(config, retry_user, progress=self.job.update_step, reset_progress=self.job.reset_steps, should_stop=self.job.is_interrupted))
         if not user_results:
             raise ConfigError("没有可重试失败项")
         return user_results[0] if len(user_results) == 1 else {"users": user_results}
@@ -463,7 +466,6 @@ def _contacts_from_payload(raw: Any) -> list[dict[str, str] | str]:
                 contacts.append(
                     {
                         "name": str(item.get("name", "")).strip(),
-                        "profile_url": str(item.get("profile_url", "")).strip(),
                         "message": str(item.get("message", "")).strip(),
                     }
                 )
@@ -482,8 +484,7 @@ def _contacts_from_payload(raw: Any) -> list[dict[str, str] | str]:
             contacts.append(
                 {
                     "name": parts[0],
-                    "profile_url": parts[1] if len(parts) > 1 else "",
-                    "message": parts[2] if len(parts) > 2 else "",
+                    "message": parts[1] if len(parts) > 1 else "",
                 }
             )
     return contacts
@@ -531,9 +532,7 @@ def _initial_steps() -> list[dict[str, str]]:
     return [
         _step("open_home", "打开抖音首页"),
         _step("open_messages", "打开私信面板"),
-        _step("open_contact_profile", "打开联系人主页"),
-        _step("profile_message_entry", "点击主页私信"),
-        _step("contact_recent_list", "最近会话兜底"),
+        _step("contact_recent_list", "浏览最近会话"),
         _step("open_conversation", "进入会话"),
         _step("input_box", "查找输入框"),
         _step("input_message", "输入消息"),
@@ -592,7 +591,6 @@ def _failed_contacts_by_user(result: Any) -> dict[str, list[dict[str, str]]]:
             contacts.append(
                 {
                     "name": str(item.get("contact", "")),
-                    "profile_url": str(item.get("profile_url", "")),
                     "message": "",
                 }
             )

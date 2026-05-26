@@ -25,9 +25,9 @@ def test_job_state_marks_running_step_failed() -> None:
     job = JobState()
 
     job.start("run:main")
-    job.update_step("profile_message_entry", "running", "main")
+    job.update_step("contact_recent_list", "running", "main")
     job.finish("failed", error="not found")
-    contact_step = [step for step in job.snapshot()["steps"] if step["key"] == "profile_message_entry"][0]
+    contact_step = [step for step in job.snapshot()["steps"] if step["key"] == "contact_recent_list"][0]
 
     assert contact_step["status"] == "failed"
     assert contact_step["error"] == "not found"
@@ -41,7 +41,7 @@ def test_job_state_records_duration_and_failed_contacts() -> None:
         ended_at="2026-05-25T00:00:10",
         results=[
             ContactResult(contact="ok", success=True),
-            ContactResult(contact="bad", success=False, reason="not found", profile_url="https://www.douyin.com/user/bad"),
+            ContactResult(contact="bad", success=False, reason="not found"),
         ],
     )
 
@@ -52,7 +52,7 @@ def test_job_state_records_duration_and_failed_contacts() -> None:
     assert snapshot["running"] is False
     assert snapshot["duration_seconds"] >= 0
     assert snapshot["last_failed"] == {
-        "main": [{"name": "bad", "profile_url": "https://www.douyin.com/user/bad", "message": ""}]
+        "main": [{"name": "bad", "message": ""}]
     }
 
 
@@ -69,6 +69,19 @@ def test_job_state_interrupts_running_job() -> None:
     assert snapshot["cancel_requested"] is True
     assert snapshot["steps"][0]["status"] == "failed"
     assert snapshot["steps"][0]["error"] == "已中断"
+
+
+def test_job_state_reset_steps_clears_previous_contact_progress() -> None:
+    job = JobState()
+
+    job.start("run:main")
+    job.update_step("open_home", "done", "first")
+    job.update_step("input_box", "running", "")
+    job.reset_steps()
+    snapshot = job.snapshot()
+
+    assert snapshot["steps"][0]["key"] == "open_home"
+    assert all(step["status"] == "pending" for step in snapshot["steps"])
 
 
 def test_retry_failed_requires_failed_contacts() -> None:
@@ -96,7 +109,6 @@ users:
     enabled: true
     contacts:
       - name: friend
-        profile_url: https://www.douyin.com/user/friend
     message: hello
 """,
         encoding="utf-8",
