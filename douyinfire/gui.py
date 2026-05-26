@@ -19,6 +19,7 @@ from .tasks import login_user, run_all, run_user
 class JobState:
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.cancel_event = threading.Event()
         self.running = False
         self.kind = ""
         self.message = "idle"
@@ -35,6 +36,7 @@ class JobState:
             if self.running:
                 return False
             self.running = True
+            self.cancel_event.clear()
             self.kind = kind
             self.message = "running"
             self.result = None
@@ -46,12 +48,24 @@ class JobState:
                 self.last_failed = {}
             return True
 
+    def interrupt(self) -> bool:
+        with self.lock:
+            if not self.running:
+                return False
+            self.cancel_event.set()
+            self.message = "interrupting"
+            self._mark_running_step("failed", "已中断")
+            return True
+
+    def is_interrupted(self) -> bool:
+        return self.cancel_event.is_set()
+
     def finish(self, message: str, result: Any = None, error: str = "") -> None:
         with self.lock:
             if error:
                 self._mark_running_step("failed", error)
             self.running = False
-            self.message = message
+            self.message = "interrupted" if self.cancel_event.is_set() and not error else message
             self.result = result
             self.error = error
             self.ended_at = _now()
@@ -85,6 +99,7 @@ class JobState:
                 "ended_at": self.ended_at,
                 "duration_seconds": _duration_seconds(self.started_at, self.ended_at),
                 "last_failed": self.last_failed,
+                "cancel_requested": self.cancel_event.is_set(),
             }
 
     def _mark_running_step(self, status: str, error: str) -> None:
@@ -142,6 +157,13 @@ class GuiServer:
             query = parse_qs(parsed.query)
             limit = int(query.get("limit", ["200"])[0])
             _send_json(request, {"text": self._logs(limit)})
+        elif parsed.path == "/api/screenshot":
+            try:
+                query = parse_qs(parsed.query)
+                path = str(query.get("path", [""])[0])
+                _send_screenshot(request, self._screenshot_path(path))
+            except Exception as exc:
+                _send_json(request, {"error": str(exc)}, HTTPStatus.NOT_FOUND)
         else:
             _send_json(request, {"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -186,6 +208,9 @@ class GuiServer:
             elif parsed.path == "/api/retry-failed":
                 self._start_job("retry-failed", self._retry_failed)
                 _send_json(request, {"ok": True})
+            elif parsed.path == "/api/interrupt":
+                interrupted = self.job.interrupt()
+                _send_json(request, {"ok": True, "interrupted": interrupted})
             elif parsed.path == "/api/service/uninstall":
                 removed = uninstall_service()
                 _send_json(request, {"ok": True, "removed": removed})
@@ -276,11 +301,11 @@ class GuiServer:
 
     def _run_user(self, user_name: str) -> Any:
         config = load_config(self.config_path)
-        return run_user(config, config.user(user_name), progress=self.job.update_step)
+        return run_user(config, config.user(user_name), progress=self.job.update_step, should_stop=self.job.is_interrupted)
 
     def _run_all(self) -> Any:
         config = load_config(self.config_path)
-        return run_all(config, progress=self.job.update_step)
+        return run_all(config, progress=self.job.update_step, should_stop=self.job.is_interrupted)
 
     def _retry_failed(self) -> Any:
         failed = self.job.snapshot().get("last_failed", {})
@@ -308,7 +333,7 @@ class GuiServer:
                 ],
             )
             if retry_user.contacts:
-                user_results.append(run_user(config, retry_user, progress=self.job.update_step))
+                user_results.append(run_user(config, retry_user, progress=self.job.update_step, should_stop=self.job.is_interrupted))
         if not user_results:
             raise ConfigError("没有可重试失败项")
         return user_results[0] if len(user_results) == 1 else {"users": user_results}
@@ -342,6 +367,24 @@ class GuiServer:
             return ""
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         return "\n".join(lines[-limit:])
+
+    def _screenshot_path(self, raw_path: str) -> Path:
+        if not raw_path:
+            raise ConfigError("missing screenshot path")
+
+        config = load_config(self.config_path)
+        screenshot_root = config.screenshot_dir.resolve()
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = (config.screenshot_dir / path).resolve()
+        else:
+            path = path.resolve()
+
+        if screenshot_root != path and screenshot_root not in path.parents:
+            raise ConfigError("screenshot path is outside screenshot_dir")
+        if path.suffix.lower() != ".png" or not path.exists():
+            raise ConfigError("screenshot does not exist")
+        return path
 
 
 class BusyError(RuntimeError):
@@ -586,6 +629,16 @@ def _send_html(request: BaseHTTPRequestHandler, html: str) -> None:
     request.send_response(HTTPStatus.OK)
     request.send_header("Content-Type", "text/html; charset=utf-8")
     request.send_header("Content-Length", str(len(body)))
+    request.end_headers()
+    request.wfile.write(body)
+
+
+def _send_screenshot(request: BaseHTTPRequestHandler, path: Path) -> None:
+    body = path.read_bytes()
+    request.send_response(HTTPStatus.OK)
+    request.send_header("Content-Type", "image/png")
+    request.send_header("Content-Length", str(len(body)))
+    request.send_header("Cache-Control", "no-store")
     request.end_headers()
     request.wfile.write(body)
 

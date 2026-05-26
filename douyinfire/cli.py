@@ -95,10 +95,12 @@ def doctor(
 
     try:
         import playwright  # noqa: F401
+        from playwright.sync_api import sync_playwright  # noqa: F401
+
         table.add_row("playwright package", "[green]ok[/green]")
     except Exception as exc:
         ok = False
-        table.add_row("playwright package", f"[red]{exc}[/red]")
+        table.add_row("playwright package", f"[red]运行时不完整，请执行 pip install -r requirements.txt && playwright install chromium: {exc}[/red]")
 
     if cfg:
         if cfg.browser.backend == "cloakbrowser":

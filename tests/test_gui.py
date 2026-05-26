@@ -56,6 +56,21 @@ def test_job_state_records_duration_and_failed_contacts() -> None:
     }
 
 
+def test_job_state_interrupts_running_job() -> None:
+    job = JobState()
+
+    assert job.start("run:main") is True
+    job.update_step("open_home", "running", "main")
+    assert job.interrupt() is True
+    snapshot = job.snapshot()
+
+    assert snapshot["running"] is True
+    assert snapshot["message"] == "interrupting"
+    assert snapshot["cancel_requested"] is True
+    assert snapshot["steps"][0]["status"] == "failed"
+    assert snapshot["steps"][0]["error"] == "已中断"
+
+
 def test_retry_failed_requires_failed_contacts() -> None:
     server = GuiServer(Path("config/douyinfire.yaml"))
 

@@ -141,6 +141,31 @@ def test_form_payload_to_yaml_round_trips() -> None:
     assert config.users[0].contacts[1].name == "b"
 
 
+def test_form_payload_accepts_structured_contact_rows() -> None:
+    text = form_payload_to_yaml(
+        {
+            "users": [
+                {
+                    "name": "main",
+                    "enabled": True,
+                    "contacts": [
+                        {"name": "呱唧唧呱", "profile_url": "", "message": "测试可选消息"},
+                        {"name": "朋友A", "profile_url": "https://www.douyin.com/user/a", "message": ""},
+                    ],
+                    "message": "全局消息",
+                }
+            ],
+        }
+    )
+    config = parse_config(__import__("yaml").safe_load(text))
+
+    assert config.users[0].message == "全局消息"
+    assert config.users[0].contacts[0].name == "呱唧唧呱"
+    assert config.users[0].contacts[0].profile_url == ""
+    assert config.users[0].contacts[0].message == "测试可选消息"
+    assert config.users[0].contacts[1].message == ""
+
+
 def test_parse_config_rejects_bad_timeout() -> None:
     with pytest.raises(ConfigError):
         parse_config(

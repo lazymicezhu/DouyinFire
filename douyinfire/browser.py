@@ -15,6 +15,10 @@ class BrowserError(RuntimeError):
     """Raised for browser automation failures."""
 
 
+class BrowserInterrupted(BrowserError):
+    """Raised when the current automation run is interrupted."""
+
+
 class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
     def __init__(
         self,
@@ -26,6 +30,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         storage_state_path: Path | None = None,
         mode: str = "run",
         progress: Callable[[str, str, str], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> None:
         self.profile_dir = profile_dir
         self.screenshot_dir = screenshot_dir
@@ -35,6 +40,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self.storage_state_path = storage_state_path or self.browser_config.storage_state_path
         self.mode = mode
         self.progress = progress
+        self.should_stop = should_stop
         self._playwright: Any = None
         self.browser: Any = None
         self.context: Any = None
@@ -58,10 +64,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             self._start_playwright_persistent(headless=self.browser_config.run_headless)
 
     def _start_playwright_persistent(self, headless: bool) -> None:
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as exc:
-            raise BrowserError("Playwright is not installed. Run: pip install -r requirements.txt") from exc
+        sync_playwright = _load_sync_playwright()
 
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -81,12 +84,17 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         except ImportError as exc:
             raise BrowserError("请先 pip install cloakbrowser，或在配置中把 browser.backend 改为 playwright") from exc
 
+        _load_sync_playwright()
+
         if not self.storage_state_path.exists():
             logging.info("Storage state missing; exporting from profile: %s", self.storage_state_path)
             self._export_storage_state_from_profile()
 
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
-        self.browser = launch(headless=self.browser_config.run_headless)
+        try:
+            self.browser = launch(headless=self.browser_config.run_headless)
+        except ImportError as exc:
+            raise BrowserError(_playwright_install_message()) from exc
         self.context = self.browser.new_context(
             storage_state=str(self.storage_state_path),
             viewport={"width": 1440, "height": 1000},
@@ -95,10 +103,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self.page.set_default_timeout(max(self.timeouts.contact_search_seconds, self.timeouts.input_box_seconds) * 1000)
 
     def _export_storage_state_from_profile(self) -> None:
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as exc:
-            raise BrowserError("Playwright is not installed. Run: pip install -r requirements.txt") from exc
+        sync_playwright = _load_sync_playwright()
 
         if not self.profile_dir.exists():
             raise BrowserError(f"未找到浏览器 profile: {self.profile_dir}。请先在 GUI 中执行登录。") from None
@@ -150,26 +155,35 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
     def send_message(self, contact: str, message: str, screenshot_prefix: str, profile_url: str = "") -> None:
         page = self._require_page()
         try:
+            self._check_interrupted()
             self._step_start("open_home", contact)
             page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
+            self._check_interrupted()
             self.screenshot(f"{screenshot_prefix}_home")
             self._step_done("open_home", contact)
 
+            self._check_interrupted()
             self._step_start("open_messages", contact)
             self._open_messages(page)
+            self._check_interrupted()
             self.screenshot(f"{screenshot_prefix}_message_panel")
             self._step_done("open_messages", contact)
 
+            self._check_interrupted()
             self._step_start("open_conversation", contact)
             self._open_contact(page, contact, profile_url)
+            self._check_interrupted()
             self.screenshot(f"{screenshot_prefix}_conversation")
             self._step_done("open_conversation", contact)
             self._write_contact_metadata(screenshot_prefix, contact, profile_url)
 
+            self._check_interrupted()
             self._fill_and_send(page, message)
             self._step_start("done", contact)
             self._step_done("done", contact)
+        except BrowserInterrupted:
+            raise
         except Exception as exc:
             self.screenshot(f"{screenshot_prefix}_failure")
             raise BrowserError(str(exc)) from exc
@@ -178,10 +192,19 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         page = self._require_page()
         path = self.screenshot_dir / f"{name}.png"
         try:
-            page.screenshot(path=str(path), full_page=True, timeout=5000)
+            page.screenshot(path=str(path), full_page=True, timeout=15000)
         except Exception as exc:
             logging.warning("Screenshot failed name=%s reason=%s", name, exc)
         return path
+
+    def capture_final_message_panel(self, screenshot_name: str) -> Path:
+        self._check_interrupted()
+        page = self._require_page()
+        page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
+        self._check_interrupted()
+        self._open_messages(page)
+        return self.screenshot(screenshot_name)
 
     def _require_page(self) -> Any:
         if self.page is None:
@@ -301,6 +324,7 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         self._step_done("press_enter")
 
     def _step_start(self, step: str, detail: str = "") -> None:
+        self._check_interrupted()
         logging.info("Step %s start %s", step, detail)
         if self.progress:
             self.progress(step, "running", detail)
@@ -309,6 +333,10 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
         logging.info("Step %s done %s", step, detail)
         if self.progress:
             self.progress(step, "done", detail)
+
+    def _check_interrupted(self) -> None:
+        if self.should_stop and self.should_stop():
+            raise BrowserInterrupted("已中断")
 
 
 def _click_first_visible(candidates: list[Any], label: str, timeout_seconds: int) -> None:
@@ -354,3 +382,15 @@ def _first_visible_from_locators(
 
 def _safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in value)[:40] or "contact"
+
+
+def _load_sync_playwright() -> Any:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise BrowserError(_playwright_install_message()) from exc
+    return sync_playwright
+
+
+def _playwright_install_message() -> str:
+    return "Playwright 运行时不完整。请在当前环境执行: pip install -r requirements.txt && playwright install chromium"

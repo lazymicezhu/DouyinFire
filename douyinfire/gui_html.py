@@ -56,16 +56,23 @@ HTML = r"""<!doctype html>
     .metric strong { display:block; font-size:22px; margin-top:4px; }
     .result-list { display:grid; gap:8px; }
     .result-row { display:grid; grid-template-columns:1.2fr 90px 1.2fr 1.4fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:8px 0; }
+    .result-screenshots { display:grid; gap:12px; margin-top:16px; }
+    .result-screenshot { display:grid; gap:8px; }
+    .result-screenshot img { width:100%; max-height:560px; object-fit:contain; border:1px solid var(--line); border-radius:6px; background:#fff; }
+    .contact-editor { display:grid; gap:8px; grid-column:1 / -1; }
+    .contact-head,.contact-row { display:grid; grid-template-columns:1fr 1.4fr 1.4fr 34px; gap:8px; align-items:center; }
+    .contact-head { color:var(--muted); font-weight:600; font-size:12px; }
+    .contact-row button { width:34px; padding:0; color:var(--danger); }
+    .icon-button { width:34px; padding:0; font-size:18px; line-height:1; }
     details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    @media (max-width:900px) { main,.grid,.grid3,.progress-grid,.summary,.result-row { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+    @media (max-width:900px) { main,.grid,.grid3,.progress-grid,.summary,.result-row,.contact-head,.contact-row { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .contact-row button,.icon-button { width:100%; } }
   </style>
 </head>
 <body>
   <header>
     <h1>DouyinFire</h1>
     <div class="row" style="margin:0">
-      <button id="refresh">刷新</button>
-      <button id="uninstall" class="danger">取消自动化</button>
+      <button id="interruptService" class="danger">中断服务</button>
     </div>
   </header>
   <main>
@@ -128,8 +135,13 @@ HTML = r"""<!doctype html>
             <div class="grid">
               <label><span>用户名称</span><input name="users.0.name"></label>
               <label><span>启用用户</span><select name="users.0.enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
-              <label><span>联系人，每行：备注名 | 主页链接 | 可选消息</span><textarea name="users.0.contacts"></textarea><div class="hint">示例：呱唧唧呱 | https://www.douyin.com/user/...<br>示例：朋友A | https://v.douyin.com/xxxx/ | 自定义消息<br>第三段消息可省略，省略时使用右侧默认消息。</div></label>
-              <label><span>消息内容</span><textarea name="users.0.message"></textarea></label>
+              <label style="grid-column:1 / -1"><span>全局消息</span><textarea name="users.0.message"></textarea><div class="hint">联系人没有自选消息时，发送这里的内容。</div></label>
+              <div class="contact-editor">
+                <h3>联系人</h3>
+                <div class="contact-head"><span>联系人</span><span>主页链接（可空）</span><span>自选消息（可空）</span><span></span></div>
+                <div id="contactRows"></div>
+                <button type="button" id="addContact" class="icon-button" title="新增联系人">+</button>
+              </div>
             </div>
           </div>
           <details class="panel">
@@ -167,6 +179,7 @@ HTML = r"""<!doctype html>
     let yamlDirty = false;
     let submitting = false;
     let previousRunning = false;
+    let lastResultRenderKey = '';
 
     async function api(path, options = {}) {
       const res = await fetch(path, options);
@@ -207,8 +220,8 @@ HTML = r"""<!doctype html>
       $('userSelect').innerHTML = (c.users || []).map(u => `<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
       renderResult(state.job);
       renderSteps(state.job.steps || []);
-      document.querySelectorAll('button').forEach(b => { if (!['refresh'].includes(b.id)) b.disabled = state.job.running || submitting; });
-      $('refresh').disabled = false;
+      document.querySelectorAll('button').forEach(b => { if (b.id !== 'interruptService') b.disabled = state.job.running || submitting; });
+      $('interruptService').disabled = !state.job.running || submitting || !!state.job.cancel_requested;
       const failed = resultRows(state.job.result).filter(r => !r.success).length;
       $('retryFailed').disabled = state.job.running || submitting || failed === 0;
     }
@@ -276,8 +289,8 @@ HTML = r"""<!doctype html>
       const u = (c.users || [])[0] || { name:'main', enabled:true, contacts:[], message:'' };
       setVal('users.0.name', u.name);
       setVal('users.0.enabled', String(!!u.enabled));
-      setVal('users.0.contacts', contactsToText(u.contacts || []));
       setVal('users.0.message', u.message || '');
+      renderContactRows(u.contacts || []);
     }
     function collectForm() {
       return {
@@ -301,26 +314,49 @@ HTML = r"""<!doctype html>
         users: [{
           name: val('users.0.name'),
           enabled: val('users.0.enabled') === 'true',
-          contacts: val('users.0.contacts'),
+          contacts: collectContacts(),
           message: val('users.0.message')
         }]
       };
     }
     function setVal(name, value) { const el = document.querySelector(`[name="${name}"]`); if (el) el.value = value ?? ''; }
     function val(name) { const el = document.querySelector(`[name="${name}"]`); return el ? el.value : ''; }
-    function contactsToText(contacts) {
-      return contacts.map(c => {
-        if (typeof c === 'string') return c;
-        return [c.name || '', c.profile_url || '', c.message || ''].join(' | ').replace(/( \| )+$/,'');
-      }).join('\n');
+    function renderContactRows(contacts) {
+      const normalized = (contacts || []).map(c => typeof c === 'string' ? { name:c, profile_url:'', message:'' } : c);
+      const rows = normalized.length ? normalized : [{ name:'', profile_url:'', message:'' }];
+      $('contactRows').innerHTML = rows.map(contactRowHtml).join('');
+    }
+    function contactRowHtml(contact = {}) {
+      return `<div class="contact-row">
+        <input data-contact-field="name" value="${escAttr(contact.name || '')}" placeholder="联系人">
+        <input data-contact-field="profile_url" value="${escAttr(contact.profile_url || '')}" placeholder="https://www.douyin.com/user/...">
+        <input data-contact-field="message" value="${escAttr(contact.message || '')}" placeholder="留空使用全局消息">
+        <button type="button" data-remove-contact title="删除联系人">×</button>
+      </div>`;
+    }
+    function collectContacts() {
+      return Array.from(document.querySelectorAll('.contact-row')).map(row => ({
+        name: row.querySelector('[data-contact-field="name"]').value.trim(),
+        profile_url: row.querySelector('[data-contact-field="profile_url"]').value.trim(),
+        message: row.querySelector('[data-contact-field="message"]').value.trim()
+      })).filter(contact => contact.name);
     }
     function statusName(v) { return ({pending:'等待', running:'运行中', done:'完成', failed:'失败'}[v] || v); }
     function renderResult(job) {
+      const renderKey = JSON.stringify({
+        message: job.message || '',
+        duration_seconds: job.duration_seconds || 0,
+        result: job.result || null
+      });
+      if (renderKey === lastResultRenderKey) return;
+      lastResultRenderKey = renderKey;
+
       const rows = resultRows(job.result);
       const total = rows.length;
       const success = rows.filter(r => r.success).length;
       const failed = rows.filter(r => !r.success).length;
       const skipped = rows.filter(r => r.skipped).length;
+      const screenshots = resultScreenshots(job.result);
       $('result').innerHTML = `
         <div class="summary">
           ${metric('总数', total)}
@@ -334,6 +370,7 @@ HTML = r"""<!doctype html>
           <div class="result-list">
             ${rows.length ? rows.map(resultRow).join('') : '<div class="muted">暂无运行结果</div>'}
           </div>
+          ${screenshots.length ? `<div class="result-screenshots">${screenshots.map(resultScreenshot).join('')}</div>` : ''}
         </div>`;
     }
     function resultUsers(result) {
@@ -346,13 +383,23 @@ HTML = r"""<!doctype html>
     function resultRows(result) {
       return resultUsers(result).flatMap(u => (u.results || []).map(item => ({...item, user:u.user})));
     }
+    function resultScreenshots(result) {
+      return resultUsers(result)
+        .filter(u => u.final_message_panel_screenshot)
+        .map(u => ({ user:u.user || '', path:u.final_message_panel_screenshot }));
+    }
     function metric(label, value) { return `<div class="metric"><span class="muted">${esc(label)}</span><strong>${esc(value)}</strong></div>`; }
     function resultRow(row) {
       const status = row.success ? (row.skipped ? '跳过' : '成功') : '失败';
       return `<div class="result-row"><strong>${esc(row.contact || '')}</strong><span class="badge ${row.success ? 'done' : 'failed'}">${status}</span><span class="muted">${esc(row.reason || '')}</span><span class="muted">${esc(row.profile_url || '')}</span></div>`;
     }
+    function resultScreenshot(item) {
+      const src = `/api/screenshot?path=${encodeURIComponent(item.path)}`;
+      return `<div class="result-screenshot"><strong>${esc(item.user)} 流程结束截图</strong><img src="${src}" alt="${esc(item.user)} 流程结束截图" onerror="this.replaceWith(Object.assign(document.createElement('div'), { className:'muted', textContent:'截图文件未生成或已不存在' }))"></div>`;
+    }
     function row(k, v) { return `<div class="line"><span>${esc(k)}</span><span class="muted">${esc(String(v || ''))}</span></div>`; }
     function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+    function escAttr(s) { return esc(s); }
     async function loadLogs() {
       const data = await api('/api/logs?limit=220');
       $('logs').textContent = data.text || '';
@@ -372,7 +419,6 @@ HTML = r"""<!doctype html>
       document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
       ['config','logs','result'].forEach(tab => $('tab-' + tab).classList.toggle('hidden', tab !== name));
     }
-    $('refresh').onclick = refresh;
     $('reloadLogs').onclick = loadLogs;
     $('saveForm').onclick = async () => {
       try {
@@ -405,7 +451,32 @@ HTML = r"""<!doctype html>
       try { activateTab('logs'); await post('/api/retry-failed'); }
       catch (e) { $('retryStatus').textContent = e.message; }
     };
-    $('uninstall').onclick = () => post('/api/service/uninstall');
+    $('interruptService').onclick = async () => {
+      submitting = true;
+      if (state) renderState();
+      try {
+        await api('/api/interrupt', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+        await refresh();
+      } finally {
+        submitting = false;
+        if (state) renderState();
+      }
+    };
+    $('addContact').onclick = () => {
+      $('contactRows').insertAdjacentHTML('beforeend', contactRowHtml());
+      formDirty = true;
+    };
+    $('contactRows').addEventListener('click', event => {
+      const button = event.target.closest('[data-remove-contact]');
+      if (!button) return;
+      const rows = Array.from(document.querySelectorAll('.contact-row'));
+      if (rows.length <= 1) {
+        rows[0].querySelectorAll('input').forEach(input => input.value = '');
+      } else {
+        button.closest('.contact-row').remove();
+      }
+      formDirty = true;
+    });
     $('configForm').addEventListener('input', () => formDirty = true);
     $('configText').addEventListener('input', () => yamlDirty = true);
     document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => activateTab(btn.dataset.tab));

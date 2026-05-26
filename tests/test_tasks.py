@@ -19,6 +19,21 @@ def test_user_run_result_counts_success_and_failure() -> None:
     assert result.failure_count == 1
 
 
+def test_user_run_result_does_not_count_interrupted_skips_as_failures() -> None:
+    result = UserRunResult(
+        user="main",
+        started_at="2026-05-21T00:00:00",
+        ended_at="2026-05-21T00:00:01",
+        results=[
+            ContactResult(contact="sent", success=True),
+            ContactResult(contact="interrupted", success=False, reason="已中断，未发送", skipped=True),
+        ],
+    )
+
+    assert result.success_count == 1
+    assert result.failure_count == 0
+
+
 def test_recently_sent_tracks_user_contact_and_message(tmp_path: Path) -> None:
     contact_a = ContactConfig(name="a", profile_url="https://www.douyin.com/user/a")
     contact_b = ContactConfig(name="b")
