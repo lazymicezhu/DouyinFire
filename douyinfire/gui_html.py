@@ -35,9 +35,10 @@ HTML = r"""<!doctype html>
     .users { display:grid; gap:8px; margin-bottom:16px; }
     .user { border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--panel); }
     .user strong { display:block; margin-bottom:3px; }
-    .tabs { display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid var(--line); }
+    .tabs { display:flex; gap:6px; margin:-16px 0 12px; padding:16px 0 0; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:-16px; z-index:5; }
     .tab { border:0; border-radius:0; background:transparent; border-bottom:2px solid transparent; }
     .tab.active { border-bottom-color:var(--accent); color:var(--accent); }
+    .tab-actions { position:sticky; top:35px; z-index:4; background:var(--bg); padding:4px 0 12px; border-bottom:1px solid var(--line); }
     .hidden { display:none; }
     .bar { height:10px; background:#e7eaee; border-radius:999px; overflow:hidden; margin:8px 0 14px; }
     .bar > div { height:100%; width:0%; background:var(--accent); transition:width .2s ease; }
@@ -96,7 +97,7 @@ HTML = r"""<!doctype html>
         <button class="tab" data-tab="result">结果</button>
       </div>
       <div id="tab-config">
-        <div class="row">
+        <div class="row tab-actions">
           <button id="saveForm" class="primary">保存配置</button>
           <button id="initConfig">生成默认配置</button>
           <span class="muted" id="saveStatus"></span>
@@ -160,11 +161,11 @@ HTML = r"""<!doctype html>
             <div class="steps" id="stepsRight"></div>
           </div>
         </div>
-        <div class="row"><button id="reloadLogs">刷新日志</button></div>
+        <div class="row tab-actions"><button id="reloadLogs">刷新日志</button></div>
         <pre id="logs"></pre>
       </div>
       <div id="tab-result" class="hidden">
-        <div class="row">
+        <div class="row tab-actions">
           <button id="retryFailed" class="primary">重试失败</button>
           <span class="muted" id="retryStatus"></span>
         </div>

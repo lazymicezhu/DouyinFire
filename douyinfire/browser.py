@@ -155,26 +155,12 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
     def send_message(self, contact: str, message: str, screenshot_prefix: str, profile_url: str = "") -> None:
         page = self._require_page()
         try:
-            self._check_interrupted()
-            self._step_start("open_home", contact)
-            page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
-            self._check_interrupted()
-            self.screenshot(f"{screenshot_prefix}_home")
-            self._step_done("open_home", contact)
-
-            self._check_interrupted()
-            self._step_start("open_messages", contact)
-            self._open_messages(page)
-            self._check_interrupted()
-            self.screenshot(f"{screenshot_prefix}_message_panel")
-            self._step_done("open_messages", contact)
+            self._open_message_panel(screenshot_prefix, detail=contact)
 
             self._check_interrupted()
             self._step_start("open_conversation", contact)
             self._open_contact(page, contact, profile_url)
             self._check_interrupted()
-            self.screenshot(f"{screenshot_prefix}_conversation")
             self._step_done("open_conversation", contact)
             self._write_contact_metadata(screenshot_prefix, contact, profile_url)
 
@@ -186,6 +172,27 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
             raise
         except Exception as exc:
             self.screenshot(f"{screenshot_prefix}_failure")
+            raise BrowserError(str(exc)) from exc
+
+    def _open_message_panel(self, screenshot_prefix: str, detail: str) -> None:
+        page = self._require_page()
+        try:
+            self._check_interrupted()
+            self._step_start("open_home", detail)
+            page.goto(DOUYIN_URL, wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(self.timeouts.home_ready_seconds * 1000)
+            self._check_interrupted()
+            self._step_done("open_home", detail)
+
+            self._check_interrupted()
+            self._step_start("open_messages", detail)
+            self._open_messages(page)
+            self._check_interrupted()
+            self._step_done("open_messages", detail)
+        except BrowserInterrupted:
+            raise
+        except Exception as exc:
+            self.screenshot(f"{screenshot_prefix}_message_panel_failure")
             raise BrowserError(str(exc)) from exc
 
     def screenshot(self, name: str) -> Path:
@@ -237,7 +244,6 @@ class DouyinBrowser(AbstractContextManager["DouyinBrowser"]):
                 profile_error = exc
                 logging.warning("Contact profile navigation failed contact=%s url=%s reason=%s; falling back to recent list", contact, profile_url, exc)
                 self._step_done("profile_message_entry", f"主页私信入口失败，回退最近会话: {exc}")
-                self.screenshot(f"profile_message_entry_failure_{_safe_name(contact)}")
 
         try:
             self._open_contact_from_recent_list(page, contact)
