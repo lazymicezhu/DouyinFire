@@ -2,6 +2,7 @@
 xuhuohua_users.json
 douyin_cookies*.txt
 config/douyinfire.yaml
+config/douyinfire.json
 data/
 logs/
 screenshots/
@@ -16,3 +17,8 @@ venv/
 
 # macOS
 .DS_Store
+
+# Local application build artifacts
+build/
+dist/
+*.spec

@@ -1,0 +1,2 @@
+# Separate from application runtime requirements; local macOS build tooling.
+pyinstaller==6.22.3

@@ -1,495 +1,104 @@
-HTML = r"""<!doctype html>
+"""Self-contained interface: no CDN, framework, or Node build step."""
+HTML = r'''<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DouyinFire</title>
-  <style>
-    :root { color-scheme: light; --bg:#f6f7f8; --panel:#fff; --text:#202428; --muted:#66707a; --line:#d9dee3; --accent:#0f766e; --danger:#b42318; --ok:#12805c; --warn:#a15c00; }
-    * { box-sizing: border-box; }
-    body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
-    header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
-    h1 { font-size:18px; margin:0; letter-spacing:0; }
-    h2 { font-size:15px; margin:0 0 10px; }
-    h3 { font-size:14px; margin:18px 0 10px; }
-    main { display:grid; grid-template-columns:320px minmax(0,1fr); height:calc(100vh - 57px); overflow:hidden; }
-    aside { border-right:1px solid var(--line); padding:16px; background:#fbfbfc; overflow-y:auto; }
-    section { padding:16px 20px; overflow-y:auto; }
-    button, select, input, textarea { border:1px solid var(--line); border-radius:6px; font:inherit; background:var(--panel); color:var(--text); }
-    button, select { height:34px; padding:0 10px; }
-    button.primary { background:var(--accent); border-color:var(--accent); color:white; }
-    button.danger { border-color:#f0b6b0; color:var(--danger); }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-    input, textarea, select { width:100%; padding:8px 10px; }
-    textarea { min-height:84px; resize:vertical; }
-    pre { margin:0; min-height:260px; max-height:420px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:12px; background:#111827; color:#e5e7eb; font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    label { display:grid; gap:5px; color:var(--muted); align-content:start; }
-    label span { color:var(--text); font-weight:600; }
-    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
-    .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
-    .panel { border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:14px; margin-bottom:14px; }
-    .status { display:grid; gap:8px; margin-bottom:16px; }
-    .line { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); padding-bottom:6px; }
-    .muted { color:var(--muted); }
-    .users { display:grid; gap:8px; margin-bottom:16px; }
-    .user { border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--panel); }
-    .user strong { display:block; margin-bottom:3px; }
-    .tabs { display:flex; gap:6px; margin:-16px 0 12px; padding:16px 0 0; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:-16px; z-index:5; }
-    .tab { border:0; border-radius:0; background:transparent; border-bottom:2px solid transparent; }
-    .tab.active { border-bottom-color:var(--accent); color:var(--accent); }
-    .tab-actions { position:sticky; top:35px; z-index:4; background:var(--bg); padding:4px 0 12px; border-bottom:1px solid var(--line); }
-    .hidden { display:none; }
-    .bar { height:10px; background:#e7eaee; border-radius:999px; overflow:hidden; margin:8px 0 14px; }
-    .bar > div { height:100%; width:0%; background:var(--accent); transition:width .2s ease; }
-    .steps { display:grid; gap:7px; margin-bottom:12px; }
-    .step { display:grid; grid-template-columns:minmax(0,1fr) 78px 76px; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:8px 0; }
-    .badge { width:max-content; border:1px solid var(--line); border-radius:999px; padding:2px 8px; color:var(--muted); }
-    .badge.done { color:var(--ok); border-color:#a9dec8; }
-    .badge.running { color:var(--warn); border-color:#f2c17e; }
-    .badge.failed { color:var(--danger); border-color:#f0b6b0; }
-    .progress-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:22px; align-items:start; }
-    .panel-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .countdown { color:var(--warn); font-variant-numeric:tabular-nums; }
-    .hint { margin-top:6px; color:var(--muted); font-size:12px; }
-    .summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
-    .metric { border:1px solid var(--line); border-radius:6px; padding:12px; background:var(--panel); }
-    .metric strong { display:block; font-size:22px; margin-top:4px; }
-    .result-list { display:grid; gap:8px; }
-    .result-row { display:grid; grid-template-columns:1.2fr 90px 1.2fr 1.4fr; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:8px 0; }
-    .result-screenshots { display:grid; gap:12px; margin-top:16px; }
-    .result-screenshot { display:grid; gap:8px; }
-    .result-screenshot img { width:100%; max-height:560px; object-fit:contain; border:1px solid var(--line); border-radius:6px; background:#fff; }
-    .contact-editor { display:grid; gap:8px; grid-column:1 / -1; }
-    .contact-title { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
-    .contact-title h3 { margin-bottom:0; }
-    .contact-note { color:var(--muted); font-size:12px; font-weight:400; }
-    .contact-head,.contact-row { display:grid; grid-template-columns:1fr 1.4fr 34px; gap:8px; align-items:center; }
-    .contact-head { color:var(--muted); font-weight:600; font-size:12px; }
-    .contact-row button { width:34px; padding:0; color:var(--danger); }
-    .icon-button { width:34px; padding:0; font-size:18px; line-height:1; }
-    details textarea { min-height:260px; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
-    @media (max-width:900px) { main,.grid,.grid3,.progress-grid,.summary,.result-row,.contact-head,.contact-row { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .contact-row button,.icon-button { width:100%; } }
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DouyinFire</title>
+<style nonce="__CSP_NONCE__">
+:root{color-scheme:light;--ink:#172b28;--muted:#687773;--line:#dce5df;--bg:#f5f7f3;--accent:#237355;--danger:#a33c32}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:900px;margin:auto;padding:34px 24px 64px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}h1{font-size:25px;letter-spacing:-.8px;margin:0}h2{font-size:17px;margin:0 0 14px}p{margin:6px 0}.sub,.muted{color:var(--muted);font-size:13px}.top-actions,.actions,.inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input,select,textarea{font:inherit}button{border:1px solid var(--line);border-radius:9px;padding:9px 14px;background:#fff;color:var(--ink);cursor:pointer}button:hover{border-color:#a5bcb0}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button.danger{color:var(--danger)}button:disabled{opacity:.5;cursor:default}input,select,textarea{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:#fff;color:var(--ink);max-width:100%}input:focus,textarea:focus,select:focus{outline:2px solid #92bca7;outline-offset:1px}input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;flex-shrink:0}textarea{width:100%;resize:vertical;min-height:90px}.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:23px;margin-bottom:17px}.account-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.badge{display:inline-block;padding:3px 9px;background:#edf4ef;color:#376e50;border-radius:20px;font-size:12px}.badge.warn{background:#fff1d8;color:#95662d}.badge.bad{background:#faecea;color:#a33c32}.hidden{display:none!important}.label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}.field{margin-bottom:17px}.contacts{display:grid;gap:12px;margin-bottom:12px}.contact{padding:15px;background:#f9fbf8;border:1px solid var(--line);border-radius:10px}.contact-top{display:grid;grid-template-columns:auto minmax(100px,1fr) auto auto;gap:9px;align-items:center}.contact-bottom{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 0 25px}.contact input[type=text]{width:100%}.small{font-size:13px;padding:6px 10px}.contact-status{margin-left:25px}.error{background:#fff0ed;border:1px solid #efc9c1;color:#94382d;padding:12px 15px;border-radius:9px;margin-bottom:16px;white-space:pre-wrap}.notice{background:#eef5f0;padding:11px 14px;border-radius:9px;margin:12px 0;font-size:14px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px}.results{display:grid;gap:10px}.attempt{border-bottom:1px solid var(--line);padding-bottom:12px}.attempt:last-child{border-bottom:0}.attempt-title{display:flex;justify-content:space-between;gap:12px}.attempt .actions{margin-top:9px}.attempt p{font-size:13px;color:var(--muted)}details>summary{cursor:pointer;font-size:14px}details .inside{padding-top:17px}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}pre{white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;background:#f6f8f5;padding:12px;font-size:12px}dialog{border:1px solid var(--line);border-radius:15px;max-width:440px;width:calc(100% - 40px);padding:25px}dialog::backdrop{background:#172b2855}dialog .actions{justify-content:flex-end;margin-top:20px}dialog input{width:100%}#empty{text-align:center;padding:50px 20px}#empty h2{font-size:23px}#empty button{margin-top:18px}.schedule-line{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.schedule-line label{display:flex;align-items:center;gap:6px}.job{margin-top:15px}footer{font-size:12px;color:var(--muted);text-align:center;margin-top:24px}@media(max-width:620px){main{padding:22px 14px 40px}header,.account-head,.toolbar{align-items:flex-start;flex-direction:column}.card{padding:17px}.contact-bottom,.settings-grid{grid-template-columns:1fr}.contact-top{grid-template-columns:auto 1fr auto}.contact-top .bind{grid-column:2}.top-actions{width:100%}#accountSelect{flex:1}.contact-bottom{margin-left:0}.contact-status{margin-left:0}}
+.contact-target{display:flex;gap:8px;min-width:0}.contact-target select{flex:0 0 82px;width:82px}.contact-target input{min-width:0}.profile-entry{flex:1;min-width:0}.profile-entry summary{padding:10px 0;font-size:13px;color:var(--muted)}.profile-entry .profile-fields{display:grid;gap:7px;margin-top:7px}.group-choice{display:flex;gap:10px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:8px;margin-top:8px;cursor:pointer}.group-choice input{width:16px;flex-shrink:0}#groupChoices{max-height:320px;overflow:auto}#groupStatus{white-space:pre-line}
+</style>
 </head>
-<body>
-  <header>
-    <h1>DouyinFire</h1>
-    <div class="row" style="margin:0">
-      <button id="interruptService" class="danger">中断服务</button>
-    </div>
-  </header>
-  <main>
-    <aside>
-      <h2>状态</h2>
-      <div class="status" id="status"></div>
-      <h2>用户</h2>
-      <div class="users" id="users"></div>
-      <div class="row">
-        <select id="userSelect"></select>
-        <button id="login">登录</button>
-        <button id="loginNew">登录新账号</button>
-        <button id="runUser" class="primary">运行用户</button>
-        <button id="runAll">运行全部</button>
-      </div>
-    </aside>
-    <section>
-      <div class="tabs">
-        <button class="tab active" data-tab="config">配置</button>
-        <button class="tab" data-tab="logs">日志</button>
-        <button class="tab" data-tab="result">结果</button>
-      </div>
-      <div id="tab-config">
-        <div class="row tab-actions">
-          <button id="saveForm" class="primary">保存配置</button>
-          <button id="initConfig">生成默认配置</button>
-          <span class="muted" id="saveStatus"></span>
-        </div>
-        <form id="configForm">
-          <div class="panel">
-            <h2>基础配置</h2>
-            <div class="grid">
-              <label><span>数据目录</span><input name="data_dir"></label>
-              <label><span>日志目录</span><input name="log_dir"></label>
-              <label><span>截图目录</span><input name="screenshot_dir"></label>
-              <label><span>失败通知阈值</span><input name="failure_notify_threshold" type="number" min="1"></label>
-            </div>
-          </div>
-          <div class="panel">
-            <h2>浏览器</h2>
-            <div class="grid">
-              <label><span>运行后端</span><select name="browser.backend"><option value="playwright">Playwright</option><option value="cloakbrowser">CloakBrowser</option></select></label>
-              <label><span>运行时无头</span><select name="browser.run_headless"><option value="false">否</option><option value="true">是</option></select></label>
-              <label><span>登录时无头</span><select name="browser.login_headless"><option value="false">否</option><option value="true">是</option></select></label>
-              <label><span>登录态文件</span><input name="browser.storage_state_path"></label>
-            </div>
-          </div>
-          <div class="panel">
-            <h2>等待时间</h2>
-            <div class="grid3">
-              <label><span>首页等待秒数</span><input name="timeouts.home_ready_seconds" type="number" min="1"></label>
-              <label><span>私信面板等待秒数</span><input name="timeouts.message_panel_seconds" type="number" min="1"></label>
-              <label><span>联系人搜索等待秒数</span><input name="timeouts.contact_search_seconds" type="number" min="1"></label>
-              <label><span>输入框等待秒数</span><input name="timeouts.input_box_seconds" type="number" min="1"></label>
-              <label><span>发送后等待秒数</span><input name="timeouts.after_send_seconds" type="number" min="1"></label>
-            </div>
-          </div>
-          <div class="panel">
-            <h2>用户</h2>
-            <div class="grid">
-              <label><span>用户名称</span><input name="users.0.name"></label>
-              <label><span>启用用户</span><select name="users.0.enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
-              <label style="grid-column:1 / -1"><span>全局消息</span><textarea name="users.0.message"></textarea><div class="hint">联系人没有自选消息时，发送这里的内容。</div></label>
-              <div class="contact-editor">
-                <div class="contact-title">
-                  <h3>联系人</h3>
-                  <span class="contact-note">请将需要发送消息的联系人置顶，建议只设置8位以下的联系人，超出失败风险会提高</span>
-                </div>
-                <div class="contact-head"><span>联系人</span><span>自选消息（可空）</span><span></span></div>
-                <div id="contactRows"></div>
-                <button type="button" id="addContact" class="icon-button" title="新增联系人">+</button>
-              </div>
-            </div>
-          </div>
-          <details class="panel">
-            <summary>高级 YAML</summary>
-            <div class="row" style="margin-top:12px"><button type="button" id="saveYaml">保存 YAML</button></div>
-            <textarea id="configText" spellcheck="false"></textarea>
-          </details>
-        </form>
-      </div>
-      <div id="tab-logs" class="hidden">
-        <div class="panel">
-          <h2 class="panel-title"><span>运行进度</span><span class="muted" id="elapsedText"></span></h2>
-          <div class="bar"><div id="progressBar"></div></div>
-          <div class="progress-grid">
-            <div class="steps" id="stepsLeft"></div>
-            <div class="steps" id="stepsRight"></div>
-          </div>
-        </div>
-        <div class="row tab-actions"><button id="reloadLogs">刷新日志</button></div>
-        <pre id="logs"></pre>
-      </div>
-      <div id="tab-result" class="hidden">
-        <div class="row tab-actions">
-          <button id="retryFailed" class="primary">重试失败</button>
-          <span class="muted" id="retryStatus"></span>
-        </div>
-        <div id="result"></div>
-      </div>
-    </section>
-  </main>
-  <script>
-    const $ = (id) => document.getElementById(id);
-    let state = null;
-    let formDirty = false;
-    let yamlDirty = false;
-    let submitting = false;
-    let previousRunning = false;
-    let lastResultRenderKey = '';
-
-    async function api(path, options = {}) {
-      const res = await fetch(path, options);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || res.statusText);
-      return data;
-    }
-    async function refresh() {
-      const wasRunning = previousRunning;
-      state = await api('/api/state');
-      previousRunning = !!state.job.running;
-      renderState();
-      if (wasRunning && !state.job.running && state.job.kind) activateTab('result');
-      if (!formDirty) await loadForm();
-      if (!yamlDirty) await loadYaml();
-      await loadLogs();
-    }
-    async function loadForm() {
-      try {
-        const data = await api('/api/config/form');
-        fillForm(data.config);
-      } catch (e) { $('saveStatus').textContent = e.message; }
-    }
-    async function loadYaml() {
-      const cfg = await api('/api/config');
-      $('configText').value = cfg.text || '';
-    }
-    function renderState() {
-      const c = state.config;
-      $('status').innerHTML = [
-        row('配置', c.ok ? 'ok' : c.error),
-        row('服务', state.service),
-        row('任务', state.job.running ? `${state.job.kind} running` : state.job.message),
-        row('后端', c.browser?.backend || ''),
-        row('路径', c.paths?.config || '')
-      ].join('');
-      $('users').innerHTML = (c.users || []).map(u => `<div class="user"><strong>${esc(u.name)}</strong><div class="muted">${u.enabled ? '启用' : '停用'} · ${u.contacts.length} 个联系人 · 有头登录 profile ${u.profile ? '存在' : '缺失'} · 无头登录态 ${u.storage_state ? '存在' : '缺失'}</div></div>`).join('');
-      $('userSelect').innerHTML = (c.users || []).map(u => `<option value="${esc(u.name)}">${esc(u.name)}</option>`).join('');
-      renderResult(state.job);
-      renderSteps(state.job.steps || []);
-      document.querySelectorAll('button').forEach(b => { if (b.id !== 'interruptService') b.disabled = state.job.running || submitting; });
-      $('interruptService').disabled = !state.job.running || submitting || !!state.job.cancel_requested;
-      const failed = resultRows(state.job.result).filter(r => !r.success).length;
-      $('retryFailed').disabled = state.job.running || submitting || failed === 0;
-    }
-    function renderSteps(steps) {
-      const done = steps.filter(s => s.status === 'done').length;
-      const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
-      $('progressBar').style.width = pct + '%';
-      $('elapsedText').textContent = state?.job?.started_at ? `已执行 ${formatDuration(state.job.duration_seconds || 0)}` : '';
-      const byKey = new Map(steps.map(step => [step.key, step]));
-      const leftKeys = ['open_home','open_messages','contact_recent_list','open_conversation'];
-      const rightKeys = ['input_box','input_message','press_enter','done'];
-      $('stepsLeft').innerHTML = leftKeys.map(key => byKey.get(key)).filter(Boolean).map(stepHtml).join('');
-      $('stepsRight').innerHTML = rightKeys.map(key => byKey.get(key)).filter(Boolean).map(stepHtml).join('');
-    }
-    function stepHtml(s) {
-      return `<div class="step"><strong>${esc(s.label)}</strong><span class="badge ${esc(s.status)}">${esc(statusName(s.status))}</span><span class="countdown" data-step="${esc(s.key)}">${esc(countdownText(s))}</span></div>`;
-    }
-    function rerenderCountdowns() {
-      if (!state?.job?.steps) return;
-      for (const s of state.job.steps) {
-        const el = document.querySelector(`[data-step="${CSS.escape(s.key)}"]`);
-        if (el) el.textContent = countdownText(s);
-      }
-      if (state.job.started_at) $('elapsedText').textContent = `已执行 ${formatDuration(elapsedSeconds(state.job.started_at, state.job.ended_at))}`;
-    }
-    function countdownText(step) {
-      if (step.status !== 'running' || !step.started_at) return '';
-      const expected = expectedSeconds(step.key);
-      if (!expected) return '';
-      const elapsed = (Date.now() - Date.parse(step.started_at)) / 1000;
-      return Math.max(0, expected - elapsed).toFixed(1) + 's';
-    }
-    function elapsedSeconds(startedAt, endedAt) {
-      const end = endedAt ? Date.parse(endedAt) : Date.now();
-      return Math.max(0, (end - Date.parse(startedAt)) / 1000);
-    }
-    function formatDuration(seconds) {
-      const total = Math.max(0, Math.floor(Number(seconds) || 0));
-      const minutes = Math.floor(total / 60);
-      const rest = total % 60;
-      return minutes ? `${minutes}m${rest}s` : `${rest}s`;
-    }
-    function expectedSeconds(key) {
-      const t = state?.config?.timeouts || {};
-      return ({
-        open_home: t.home_ready_seconds,
-        open_messages: t.message_panel_seconds,
-        contact_recent_list: t.contact_search_seconds,
-        open_conversation: t.contact_search_seconds,
-        input_box: t.input_box_seconds,
-        input_message: 1,
-        press_enter: t.after_send_seconds,
-        done: 1
-      })[key] || 0;
-    }
-    function fillForm(c) {
-      setVal('data_dir', c.data_dir);
-      setVal('log_dir', c.log_dir);
-      setVal('screenshot_dir', c.screenshot_dir);
-      setVal('failure_notify_threshold', c.failure_notify_threshold);
-      setVal('browser.backend', c.browser?.backend || 'playwright');
-      setVal('browser.run_headless', String(!!c.browser?.run_headless));
-      setVal('browser.login_headless', String(!!c.browser?.login_headless));
-      setVal('browser.storage_state_path', c.browser?.storage_state_path || 'data/states/main.json');
-      for (const [k,v] of Object.entries(c.timeouts || {})) setVal('timeouts.' + k, v);
-      const u = (c.users || [])[0] || { name:'main', enabled:true, contacts:[], message:'' };
-      setVal('users.0.name', u.name);
-      setVal('users.0.enabled', String(!!u.enabled));
-      setVal('users.0.message', u.message || '');
-      renderContactRows(u.contacts || []);
-    }
-    function collectForm() {
-      return {
-        data_dir: val('data_dir'),
-        log_dir: val('log_dir'),
-        screenshot_dir: val('screenshot_dir'),
-        failure_notify_threshold: Number(val('failure_notify_threshold')),
-        browser: {
-          backend: val('browser.backend'),
-          run_headless: val('browser.run_headless') === 'true',
-          login_headless: val('browser.login_headless') === 'true',
-          storage_state_path: val('browser.storage_state_path')
-        },
-        timeouts: {
-          home_ready_seconds: Number(val('timeouts.home_ready_seconds')),
-          message_panel_seconds: Number(val('timeouts.message_panel_seconds')),
-          contact_search_seconds: Number(val('timeouts.contact_search_seconds')),
-          input_box_seconds: Number(val('timeouts.input_box_seconds')),
-          after_send_seconds: Number(val('timeouts.after_send_seconds'))
-        },
-        users: [{
-          name: val('users.0.name'),
-          enabled: val('users.0.enabled') === 'true',
-          contacts: collectContacts(),
-          message: val('users.0.message')
-        }]
-      };
-    }
-    function setVal(name, value) { const el = document.querySelector(`[name="${name}"]`); if (el) el.value = value ?? ''; }
-    function val(name) { const el = document.querySelector(`[name="${name}"]`); return el ? el.value : ''; }
-    function renderContactRows(contacts) {
-      const normalized = (contacts || []).map(c => typeof c === 'string' ? { name:c, message:'' } : c);
-      const rows = normalized.length ? normalized : [{ name:'', message:'' }];
-      $('contactRows').innerHTML = rows.map(contactRowHtml).join('');
-    }
-    function contactRowHtml(contact = {}) {
-      return `<div class="contact-row">
-        <input data-contact-field="name" value="${escAttr(contact.name || '')}" placeholder="联系人">
-        <input data-contact-field="message" value="${escAttr(contact.message || '')}" placeholder="留空使用全局消息">
-        <button type="button" data-remove-contact title="删除联系人">×</button>
-      </div>`;
-    }
-    function collectContacts() {
-      return Array.from(document.querySelectorAll('.contact-row')).map(row => ({
-        name: row.querySelector('[data-contact-field="name"]').value.trim(),
-        message: row.querySelector('[data-contact-field="message"]').value.trim()
-      })).filter(contact => contact.name);
-    }
-    function statusName(v) { return ({pending:'等待', running:'运行中', done:'完成', failed:'失败'}[v] || v); }
-    function renderResult(job) {
-      const renderKey = JSON.stringify({
-        message: job.message || '',
-        duration_seconds: job.duration_seconds || 0,
-        result: job.result || null
-      });
-      if (renderKey === lastResultRenderKey) return;
-      lastResultRenderKey = renderKey;
-
-      const rows = resultRows(job.result);
-      const total = rows.length;
-      const success = rows.filter(r => r.success).length;
-      const failed = rows.filter(r => !r.success).length;
-      const skipped = rows.filter(r => r.skipped).length;
-      const screenshots = resultScreenshots(job.result);
-      $('result').innerHTML = `
-        <div class="summary">
-          ${metric('总数', total)}
-          ${metric('成功', success)}
-          ${metric('失败', failed)}
-          ${metric('跳过', skipped)}
-          ${metric('耗时', formatDuration(job.duration_seconds || 0))}
-        </div>
-        <div class="panel">
-          <h2>联系人结果</h2>
-          <div class="result-list">
-            ${rows.length ? rows.map(resultRow).join('') : '<div class="muted">暂无运行结果</div>'}
-          </div>
-          ${screenshots.length ? `<div class="result-screenshots">${screenshots.map(resultScreenshot).join('')}</div>` : ''}
-        </div>`;
-    }
-    function resultUsers(result) {
-      if (!result) return [];
-      if (Array.isArray(result)) return result;
-      if (Array.isArray(result.users)) return result.users;
-      if (Array.isArray(result.results)) return [result];
-      return [];
-    }
-    function resultRows(result) {
-      return resultUsers(result).flatMap(u => (u.results || []).map(item => ({...item, user:u.user})));
-    }
-    function resultScreenshots(result) {
-      return resultUsers(result)
-        .filter(u => u.final_message_panel_screenshot)
-        .map(u => ({ user:u.user || '', path:u.final_message_panel_screenshot }));
-    }
-    function metric(label, value) { return `<div class="metric"><span class="muted">${esc(label)}</span><strong>${esc(value)}</strong></div>`; }
-    function resultRow(row) {
-      const status = row.success ? (row.skipped ? '跳过' : '成功') : '失败';
-      return `<div class="result-row"><strong>${esc(row.contact || '')}</strong><span class="badge ${row.success ? 'done' : 'failed'}">${status}</span><span class="muted">${esc(row.reason || '')}</span><span class="muted"></span></div>`;
-    }
-    function resultScreenshot(item) {
-      const src = `/api/screenshot?path=${encodeURIComponent(item.path)}`;
-      return `<div class="result-screenshot"><strong>${esc(item.user)} 流程结束截图</strong><img src="${src}" alt="${esc(item.user)} 流程结束截图" onerror="this.replaceWith(Object.assign(document.createElement('div'), { className:'muted', textContent:'截图文件未生成或已不存在' }))"></div>`;
-    }
-    function row(k, v) { return `<div class="line"><span>${esc(k)}</span><span class="muted">${esc(String(v || ''))}</span></div>`; }
-    function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
-    function escAttr(s) { return esc(s); }
-    async function loadLogs() {
-      const data = await api('/api/logs?limit=220');
-      $('logs').textContent = data.text || '';
-    }
-    async function post(path, payload = {}) {
-      submitting = true;
-      renderState();
-      try {
-        await api(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-        await refresh();
-      } finally {
-        submitting = false;
-        if (state) renderState();
-      }
-    }
-    function activateTab(name) {
-      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-      ['config','logs','result'].forEach(tab => $('tab-' + tab).classList.toggle('hidden', tab !== name));
-    }
-    $('reloadLogs').onclick = loadLogs;
-    $('saveForm').onclick = async () => {
-      try {
-        await post('/api/config/form', collectForm());
-        formDirty = false;
-        yamlDirty = false;
-        $('saveStatus').textContent = '已保存';
-      } catch (e) { $('saveStatus').textContent = e.message; }
-    };
-    $('saveYaml').onclick = async () => {
-      try {
-        await post('/api/config', { text: $('configText').value });
-        yamlDirty = false;
-        formDirty = false;
-        $('saveStatus').textContent = 'YAML 已保存';
-      } catch (e) { $('saveStatus').textContent = e.message; }
-    };
-    $('initConfig').onclick = () => post('/api/init', { overwrite:true });
-    $('login').onclick = () => { activateTab('logs'); post('/api/login', { user:$('userSelect').value, wait_seconds:180 }); };
-    $('loginNew').onclick = () => {
-      const user = prompt('请输入新账号名称');
-      if (!user || !user.trim()) return;
-      activateTab('logs');
-      post('/api/login-new', { user:user.trim(), source:$('userSelect').value, wait_seconds:180 });
-    };
-    $('runUser').onclick = () => { activateTab('logs'); post('/api/run', { user:$('userSelect').value }); };
-    $('runAll').onclick = () => { activateTab('logs'); post('/api/run-all'); };
-    $('retryFailed').onclick = async () => {
-      $('retryStatus').textContent = '';
-      try { activateTab('logs'); await post('/api/retry-failed'); }
-      catch (e) { $('retryStatus').textContent = e.message; }
-    };
-    $('interruptService').onclick = async () => {
-      submitting = true;
-      if (state) renderState();
-      try {
-        await api('/api/interrupt', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
-        await refresh();
-      } finally {
-        submitting = false;
-        if (state) renderState();
-      }
-    };
-    $('addContact').onclick = () => {
-      $('contactRows').insertAdjacentHTML('beforeend', contactRowHtml());
-      formDirty = true;
-    };
-    $('contactRows').addEventListener('click', event => {
-      const button = event.target.closest('[data-remove-contact]');
-      if (!button) return;
-      const rows = Array.from(document.querySelectorAll('.contact-row'));
-      if (rows.length <= 1) {
-        rows[0].querySelectorAll('input').forEach(input => input.value = '');
-      } else {
-        button.closest('.contact-row').remove();
-      }
-      formDirty = true;
-    });
-    $('configForm').addEventListener('input', () => formDirty = true);
-    $('configText').addEventListener('input', () => yamlDirty = true);
-    document.querySelectorAll('.tab').forEach(btn => btn.onclick = () => activateTab(btn.dataset.tab));
-    refresh();
-    setInterval(refresh, 2500);
-    setInterval(rerenderCountdowns, 100);
-  </script>
-</body>
-</html>
-"""
+<body><main>
+<header><div><h1>DouyinFire</h1><p class="sub">让每天的问候，简单一点。</p></div><div class="top-actions"><select id="accountSelect" aria-label="当前账号"></select><button id="addAccount">添加账号</button></div></header>
+<div id="error" class="error hidden" role="alert"></div>
+<div id="migrationWarnings" class="notice hidden" role="status" style="white-space:pre-line"></div>
+<div id="empty" class="card hidden"><h2>从添加一个账号开始</h2><p class="muted">首次扫码登录，之后在后台安静运行。</p><button id="firstAccount" class="primary">添加账号</button></div>
+<div id="workspace" class="hidden">
+<section class="card">
+<div class="account-head"><div><h2 id="accountHeading">当前账号</h2><span id="authStatus" class="badge warn">尚未检查</span></div><div class="actions"><button id="login">扫码登录</button><button id="check">检查连接</button></div></div>
+<p class="muted" id="loginHint">需要首次登录或登录失效时，才会打开浏览器窗口。</p>
+<div class="field" style="margin-top:20px"><label class="label" for="message">默认消息</label><textarea id="message" placeholder="写下要发送的问候"></textarea></div>
+<div class="inline" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">联系人</h2><button id="addContact" class="small">＋ 添加联系人</button></div>
+<div id="contacts" class="contacts"></div><p class="muted">保存后选择私聊联系人或群聊。未绑定的联系人不会自动发送。</p>
+<div class="toolbar"><div class="inline"><button id="save" class="primary">保存修改</button><span id="saveStatus" class="muted" role="status"></span><button id="reloadConfig" class="small hidden">放弃修改并重载</button></div><button id="run" class="primary">立即执行</button><button id="stop" class="danger hidden">停止任务</button></div>
+<div id="job" class="notice job hidden" role="status"></div>
+</section>
+<section class="card"><h2>每天自动执行</h2><div class="schedule-line"><label><input id="scheduleEnabled" type="checkbox">开启</label><input id="scheduleTime" aria-label="每天执行时间" type="time" value="00:05"><span id="scheduleTimezone" class="muted"></span><button id="saveSchedule" class="small">保存时间</button></div><p id="nextRun" class="muted">关闭网页后，已开启的后台服务仍会运行。</p></section>
+<section class="card"><div class="inline" style="justify-content:space-between;margin-bottom:15px"><h2 style="margin:0">最近结果</h2><button id="retry" class="small">重试明确未发送项</button></div><div id="latestResult" class="hidden"></div><div id="results" class="results"><p class="muted">还没有执行记录。</p></div></section>
+</div>
+<details class="card" id="settings"><summary>设置与运行详情</summary><div class="inside">
+<div id="accountSettings" class="settings-grid"><label><span class="label">账号显示名称</span><input id="accountName" type="text"></label><label class="inline"><input id="accountEnabled" type="checkbox">此账号参与自动执行</label></div>
+<div class="settings-grid" style="margin-top:16px"><label><span class="label">联系人之间间隔（秒）</span><input id="interval" type="number" min="1" value="10"></label><label><span class="label">时间浮动范围（分钟）</span><input id="jitter" type="number" min="0" value="20"></label></div><p class="muted">间隔和浮动范围随“保存时间”一起保存。</p>
+<p id="serviceStatus" class="muted"></p><div class="actions"><button id="enableService">开启登录后后台运行</button><button id="disableService">关闭登录后后台运行</button><button id="exitService" class="danger">退出后台</button></div>
+<details style="margin-top:20px"><summary>详细日志</summary><button id="loadLogs" class="small" style="margin-top:12px">刷新日志</button><pre id="logs">点击刷新查看。</pre></details>
+</div></details><footer>仅在本机保存配置与登录状态 · 无大模型参与执行</footer>
+</main>
+<dialog id="accountDialog"><h2>添加账号</h2><label class="label" for="newAccountName">给账号起一个便于区分的名称</label><input id="newAccountName" type="text" maxlength="80" placeholder="例如：日常账号"><div id="dialogError" class="error hidden"></div><div class="actions"><button id="cancelAdd">取消</button><button id="confirmAdd" class="primary">添加</button></div></dialog>
+<dialog id="groupDialog"><h2 id="conversationTitle">选择会话</h2><p id="groupAccount" class="muted"></p><p id="groupStatus" role="status">正在读取群聊…</p><div id="groupChoices"></div><p class="muted">这里只读取会话；选择后会再次核实身份，不发送消息。</p><div class="actions"><button id="closeGroup">取消</button><button id="refreshGroups">重新读取</button><button id="confirmGroup" class="primary" disabled>核实并绑定</button></div></dialog>
+<script nonce="__CSP_NONCE__">
+'use strict';
+const CSRF = '__CSRF_TOKEN__';
+const $ = id => document.getElementById(id);
+let state = null, selectedId = localStorage.getItem('douyinfire.account') || '', dirty = false, scheduleDirty = false, submitting = false, refreshBusy = false;
+let editingRevision = '', scheduleRevision = '', userRenderKey = '', usersRenderKey = '', historyKey = '', polling = true;
+let groupPicker = null;
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function showError(message){$('error').textContent = message || ''; $('error').classList.toggle('hidden', !message);if(message&&$('groupDialog').open)$('groupStatus').textContent=message;}
+async function api(path, payload){const options = payload === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(payload)};const res = await fetch(path, options);let data;try{data=await res.json();}catch{throw Error('本地服务暂时无法连接，请重新打开 DouyinFire。');}if(!res.ok)throw Error(data.error || '操作失败');return data;}
+function account(){return state?.config?.users?.find(user=>user.id===selectedId);}
+function markDirty(){dirty=true;$('saveStatus').textContent='有未保存的修改';$('reloadConfig').classList.remove('hidden');renderControls();}
+function markScheduleDirty(){scheduleDirty=true;}
+function choose(id){closeGroupPicker();selectedId=id;localStorage.setItem('douyinfire.account',id);userRenderKey='';historyKey='';dirty=false;render();loadHistory().catch(e=>showError(e.message));}
+function render(){
+ const users=state.config.users||[]; if(!users.some(user=>user.id===selectedId))selectedId=users[0]?.id||'';
+ const key=JSON.stringify(users.map(user=>[user.id,user.name]));if(key!==usersRenderKey){$('accountSelect').innerHTML=users.map(user=>`<option value="${esc(user.id)}">${esc(user.name)}</option>`).join('');usersRenderKey=key;}$('accountSelect').value=selectedId;
+ $('empty').classList.toggle('hidden',!!users.length);$('workspace').classList.toggle('hidden',!users.length);$('accountSettings').classList.toggle('hidden',!users.length);
+ const user=account(); if(user){const next=JSON.stringify(user);if(!dirty && next!==userRenderKey){fillUser(user);userRenderKey=next;editingRevision=state.revision;}else if(!dirty){editingRevision=state.revision;}
+ $('accountHeading').textContent=user.name; const auth=state.manager.auth?.[selectedId]||{}; const status=auth.status||'unknown'; const ready=['ready','logged_in','authenticated','ok','valid'].includes(status);$('authStatus').textContent=ready?'连接正常':(['expired','login_required','logged_out','needs_login'].includes(status)?'需要重新登录':'尚未核实连接');$('authStatus').className='badge'+(ready?'':' warn');$('login').textContent=ready?'重新登录':'扫码登录';$('loginHint').textContent=auth.reason||(ready&&auth.name?'已核实登录账号：'+auth.name:'需要首次登录或登录失效时，才会打开浏览器窗口。');$('run').textContent='立即执行 · '+user.name;
+ }
+ if(!scheduleDirty){const s=state.config.schedule||{};$('scheduleEnabled').checked=!!s.enabled;$('scheduleTime').value=s.time||'00:05';$('interval').value=s.min_contact_interval_seconds||10;$('jitter').value=s.jitter_minutes??20;scheduleRevision=state.revision;}
+ const zone=state.config.schedule?.timezone||'';$('scheduleTimezone').textContent=({'Asia/Hong_Kong':'香港时间','Asia/Shanghai':'北京时间'}[zone]||zone);
+ const next=state.manager.next_run;let nextLabel=next;if(next&&typeof next==='string'){try{nextLabel=new Date(next).toLocaleString('zh-CN',{timeZone:zone||undefined,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});}catch{nextLabel=next;}}$('nextRun').textContent=next?'下一次执行：'+nextLabel:'关闭网页后，已开启的后台服务仍会运行。';
+ const job=state.manager;const detail=job.progress?.detail||job.progress?.step||job.message||'';$('job').classList.toggle('hidden',!job.running&&!job.error);const jobUser=(state.config.users||[]).find(item=>item.id===job.user_id);const jobLabel=jobUser?jobUser.name+' · ':'';$('job').textContent=jobLabel+(job.error||('正在执行：'+detail));const serviceNames={'not installed':'尚未开启登录后自动运行','installed and loaded':'已开启登录后自动运行','running':'正在运行','unsupported platform':'当前系统不支持'};$('serviceStatus').textContent='后台服务：'+(state.service.error||serviceNames[state.service.status]||state.service.status||'运行中');
+ const warnings=state.config.migration_warnings||[];$('migrationWarnings').textContent=warnings.length?'配置升级提示\n'+warnings.join('\n'):'';$('migrationWarnings').classList.toggle('hidden',!warnings.length);
+ renderLatest();renderGroupPicker();if(state.config_error)showError(state.config_error);renderControls();
+}
+function renderControls(){if(!state)return;const busy=!!state.manager.running||submitting;document.querySelectorAll('button').forEach(button=>{if(!['cancelAdd','closeGroup','loadLogs','reloadConfig'].includes(button.id))button.disabled=busy;});$('stop').disabled=submitting||!!state.manager.cancel_requested;$('stop').classList.toggle('hidden',!state.manager.running);$('run').classList.toggle('hidden',!!state.manager.running);$('accountSelect').disabled=submitting;$('save').disabled=busy||!dirty;$('run').disabled=busy||dirty||!account();$('retry').disabled=busy||dirty||!account();document.querySelectorAll('[data-bind],[data-profile-bind]').forEach(button=>button.disabled=busy||dirty||!(button.dataset.bind||button.dataset.profileBind));document.querySelectorAll('#contacts input,#contacts select,#message,#accountName,#accountEnabled,#scheduleEnabled,#scheduleTime,#interval,#jitter').forEach(input=>input.disabled=busy);$('confirmGroup').disabled=busy||!groupPicker?.selected;$('refreshGroups').disabled=busy||!groupPicker;document.querySelectorAll('#groupChoices input').forEach(input=>input.disabled=busy);}
+function fillUser(user){$('message').value=user.message||'';$('accountName').value=user.name;$('accountEnabled').checked=user.enabled!==false;$('contacts').innerHTML=(user.contacts||[]).map(contactHtml).join('');$('saveStatus').textContent='';$('reloadConfig').classList.add('hidden');}
+function contactHtml(c={}){const group=c.kind==='group';return `<div class="contact" data-contact-id="${esc(c.id||'')}"><div class="contact-top"><input data-field="enabled" aria-label="启用联系人" type="checkbox" ${c.enabled===false?'':'checked'}><input data-field="name" aria-label="联系人名称" type="text" placeholder="联系人名称" value="${esc(c.name||'')}"><button type="button" class="small bind" data-bind="${esc(c.id||'')}">${c.id?(group?'选择群聊':'选择联系人'):'保存后绑定'}</button><button type="button" class="small danger" data-remove aria-label="删除联系人">移除</button></div><div class="contact-bottom"><div class="contact-target"><select data-field="kind" aria-label="联系人类型"><option value="direct" ${group?'':'selected'}>私聊</option><option value="group" ${group?'selected':''}>群聊</option></select><details class="profile-entry ${group?'hidden':''}"><summary>使用主页链接</summary><div class="profile-fields"><input data-field="profile_url" aria-label="联系人主页链接" type="text" placeholder="抖音主页链接" value="${esc(group?'':c.profile_url||'')}"><button type="button" class="small" data-profile-bind="${esc(c.id||'')}">核实主页</button></div></details></div><input data-field="message" aria-label="联系人自选消息" type="text" placeholder="自选消息，留空使用默认消息" value="${esc(c.message||'')}"></div><p class="muted contact-status">${c.identity?'已核实绑定，可用于自动执行':(group?'尚未绑定，请从当前账号选择群聊':'尚未绑定，请从当前账号选择联系人')}</p></div>`;}
+function collectUser(){return {revision:editingRevision,name:$('accountName').value.trim(),enabled:$('accountEnabled').checked,message:$('message').value,contacts:Array.from(document.querySelectorAll('[data-contact-id]')).map(row=>({id:row.dataset.contactId||undefined,name:row.querySelector('[data-field=name]').value.trim(),enabled:row.querySelector('[data-field=enabled]').checked,kind:row.querySelector('[data-field=kind]').value,profile_url:row.querySelector('[data-field=kind]').value==='group'?'':row.querySelector('[data-field=profile_url]').value.trim(),message:row.querySelector('[data-field=message]').value}))};}
+function closeGroupPicker(){groupPicker=null;$('groupDialog').close();$('groupChoices').innerHTML='';}
+async function scanGroups(){const picker=groupPicker;if(!picker||picker.userId!==selectedId||dirty)throw Error('请先保存当前联系人。');picker.jobId='';picker.loadedJobId='';picker.selected='';picker.choices=[];$('groupChoices').innerHTML='';$('groupStatus').textContent='正在读取'+(picker.kind==='group'?'群聊':'私聊')+'…';const data=await api('/api/jobs',{kind:'list_conversations',user_id:picker.userId,payload:{kind:picker.kind,contact_id:picker.contactId}});if(groupPicker===picker)picker.jobId=data.job.job_id;}
+async function openGroupPicker(contactId,kind){if(dirty)throw Error('请先保存当前账号的修改。');groupPicker={userId:selectedId,contactId,kind,jobId:'',loadedJobId:'',choices:[],selected:''};$('groupAccount').textContent='当前账号：'+account().name;$('conversationTitle').textContent=kind==='group'?'选择群聊':'选择联系人';$('groupDialog').showModal();await scanGroups();}
+function renderGroupPicker(){const picker=groupPicker;if(!picker)return;const label=picker.kind==='group'?'群聊':'私聊';if(picker.userId!==selectedId||dirty||!account()?.contacts?.some(c=>c.id===picker.contactId&&(c.kind||'direct')===picker.kind)){closeGroupPicker();return;}const job=state.manager;if(!picker.jobId)return;if(job.job_id!==picker.jobId){if(picker.loadedJobId){picker.selected='';picker.choices=[];$('groupChoices').innerHTML='';$('groupStatus').textContent='读取结果已过期，请重新读取。';}return;}if(job.running){$('groupStatus').textContent='正在读取'+label+'…';return;}if(job.error){$('groupStatus').textContent=job.error;return;}const result=job.result;if(job.kind!=='list_conversations'||!result||result.job_id!==picker.jobId||result.user_id!==picker.userId||result.contact_id!==picker.contactId||result.kind!==picker.kind){$('groupStatus').textContent='读取结果已失效，请重新读取。';return;}if(picker.loadedJobId===picker.jobId)return;picker.loadedJobId=picker.jobId;picker.choices=(Array.isArray(result.conversations)?result.conversations:[]).filter(c=>(c.kind||'direct')===picker.kind&&typeof c.identity==='string'&&c.identity&&typeof c.name==='string');const names=picker.choices.map(c=>c.name);$('groupStatus').textContent=picker.choices.length?'选择一个'+label+'，再核实绑定。':'没有读取到可绑定的'+label+'。可先在抖音中打开会话，再重新读取。';$('groupChoices').innerHTML=picker.choices.map((c,i)=>`<label class="group-choice"><input type="radio" name="groupChoice" value="${i}"><span>${esc(c.name)}${names.filter(n=>n===c.name).length>1?`<br><small class="muted">同名会话 · 标识 ${esc(c.identity.slice(-10))}</small>`:''}</span></label>`).join('');}
+async function refresh(){if(refreshBusy||!polling)return;refreshBusy=true;try{state=await api('/api/state');render();await loadHistory();}catch(e){showError(e.message);}finally{refreshBusy=false;}}
+async function loadHistory(){if(!selectedId)return;const requested=selectedId;const data=await api('/api/history?user_id='+encodeURIComponent(requested));if(requested!==selectedId)return;const key=JSON.stringify(data.attempts||[]);if(key===historyKey)return;historyKey=key;renderHistory(data.attempts||[]);renderControls();}
+function renderLatest(){const result=state.manager.result;const users=result?(Array.isArray(result.users)?result.users:[result]):[];const user=users.find(item=>item.user_id===selectedId||(!item.user_id&&state.manager.user_id===selectedId));const rows=user?.results||[];const box=$('latestResult');box.classList.toggle('hidden',!rows.length);if(!rows.length){box.innerHTML='';return;}const counts={sent:0,skipped:0,failed:0,uncertain:0,cancelled:0};for(const row of rows){if(row.status==='uncertain')counts.uncertain++;else if(row.skipped)counts.skipped++;else if(row.status==='confirmed')counts.sent++;else if(row.status==='cancelled')counts.cancelled++;else counts.failed++;}const parts=[`新发送 ${counts.sent}`,`已跳过 ${counts.skipped}`,`未发送 ${counts.failed}`,`待核实 ${counts.uncertain}`];if(counts.cancelled)parts.push(`已停止 ${counts.cancelled}`);const details=rows.filter(row=>!row.attempt_id||row.skipped);box.innerHTML=`<div class="notice">本次执行：${parts.join(' · ')}</div>${details.map(row=>`<div class="attempt"><strong>${esc(row.contact||'当前账号')}</strong><p>${esc(row.reason||'')}</p></div>`).join('')}<p class="muted" style="margin-top:15px">历史发送记录</p>`;}
+function renderHistory(items){$('results').innerHTML=items.length?items.slice(0,30).map(item=>{const status=item.status||'';const uncertain=['uncertain','unknown','pending_confirmation'].includes(status);const names={confirmed:'已发送',reserved:'等待发送',dispatching:'正在发送',cancelled:'已取消',sent:'已发送',confirmed_sent:'已核实发送',failed:'未发送',not_sent:'未发送',uncertain:'待核实',unknown:'待核实',pending_confirmation:'待核实',sending:'待核实',skipped:'已跳过',retry_allowed:'允许再次手动执行'};return `<article class="attempt"><div class="attempt-title"><strong>${esc(item.contact||item.contact_name||'联系人')}</strong><span class="badge ${uncertain?'warn':''}">${esc(names[status]||status)}</span></div><p>${esc(item.message||'')}</p><p>${esc(item.reason||'')} ${esc(item.date||item.created_at||'')}</p>${uncertain?`<p>结果尚未确认，为避免重复发送，已暂停重试。请先在抖音中核实这条消息。</p><div class="actions"><button class="small" data-resolve="confirmed_sent" data-attempt="${esc(item.id)}">我已核实：已发送</button><button class="small" data-resolve="retry_allowed" data-attempt="${esc(item.id)}">我已核实：未发送</button></div>`:''}</article>`;}).join(''):'<p class="muted">还没有执行记录。</p>';}
+async function action(fn){if(submitting)return;submitting=true;showError('');renderControls();try{await fn();await refresh();}catch(e){showError(e.message);}finally{submitting=false;renderControls();}}
+async function job(kind,payload={}){if(dirty)throw Error('请先保存当前账号的修改。');await api('/api/jobs',{kind,user_id:selectedId,payload});}
+function openAdd(){if(dirty){showError('请先保存当前账号的修改，再添加账号。');return;}$('newAccountName').value='';$('dialogError').classList.add('hidden');$('accountDialog').showModal();$('newAccountName').focus();}
+$('addAccount').onclick=openAdd;$('firstAccount').onclick=openAdd;$('cancelAdd').onclick=()=>$('accountDialog').close();
+$('confirmAdd').onclick=()=>action(async()=>{const data=await api('/api/users',{name:$('newAccountName').value,revision:state.revision});selectedId=data.user_id;localStorage.setItem('douyinfire.account',selectedId);dirty=false;userRenderKey='';$('accountDialog').close();});
+$('accountSelect').onchange=()=>{const id=$('accountSelect').value;if(dirty&&!confirm('当前账号有未保存的修改。放弃修改并切换账号？')){$('accountSelect').value=selectedId;return;}choose(id);};
+$('message').oninput=markDirty;$('accountName').oninput=markDirty;$('accountEnabled').onchange=markDirty;$('contacts').addEventListener('input',markDirty);
+$('contacts').addEventListener('change',event=>{if(!event.target.matches('[data-field=kind]'))return;const row=event.target.closest('[data-contact-id]');const group=event.target.value==='group';const name=row.querySelector('[data-field=name]');if(!name.value.trim()||['待选择的联系人','待选择的群聊'].includes(name.value))name.value=group?'待选择的群聊':'待选择的联系人';const profile=row.querySelector('[data-field=profile_url]');profile.value='';row.querySelector('.profile-entry').classList.toggle('hidden',group);row.querySelector('[data-bind]').textContent=row.dataset.contactId?(group?'选择群聊':'选择联系人'):'保存后绑定';row.querySelector('.contact-status').textContent='类型已变化，保存后重新核实身份';markDirty();});
+$('addContact').onclick=()=>{$('contacts').insertAdjacentHTML('beforeend',contactHtml({name:'待选择的联系人'}));markDirty();};
+$('contacts').addEventListener('click',event=>{const remove=event.target.closest('[data-remove]');if(remove){remove.closest('[data-contact-id]').remove();markDirty();return;}const bind=event.target.closest('[data-bind]');if(bind){const row=bind.closest('[data-contact-id]');action(()=>openGroupPicker(row.dataset.contactId,row.querySelector('[data-field=kind]').value));return;}const profile=event.target.closest('[data-profile-bind]');if(profile){const row=profile.closest('[data-contact-id]');action(()=>job('bind',{contact_id:row.dataset.contactId,profile_url:row.querySelector('[data-field=profile_url]').value.trim()}));}});
+$('closeGroup').onclick=closeGroupPicker;$('groupDialog').addEventListener('cancel',()=>{groupPicker=null;$('groupChoices').innerHTML='';});
+$('refreshGroups').onclick=()=>action(scanGroups);
+$('groupChoices').addEventListener('change',event=>{if(!groupPicker||!event.target.matches('input[name=groupChoice]'))return;groupPicker.selected=groupPicker.choices[Number(event.target.value)]?.identity||'';renderControls();});
+$('confirmGroup').onclick=()=>action(async()=>{const picker=groupPicker;if(!picker||picker.userId!==selectedId||!picker.selected||dirty||state.manager.job_id!==picker.jobId)throw Error('选择结果已失效，请重新读取会话。');await api('/api/jobs',{kind:'bind',user_id:picker.userId,payload:{contact_id:picker.contactId,identity:picker.selected}});closeGroupPicker();});
+$('save').onclick=()=>action(async()=>{await api('/api/users/'+encodeURIComponent(selectedId),collectUser());dirty=false;userRenderKey='';$('saveStatus').textContent='已保存';});
+$('reloadConfig').onclick=()=>{if(confirm('放弃当前未保存的修改并重新载入？')){dirty=false;userRenderKey='';refresh();}};
+$('login').onclick=()=>action(()=>job('login'));$('check').onclick=()=>action(()=>job('check'));$('run').onclick=()=>action(()=>job('run'));$('retry').onclick=()=>action(()=>job('retry'));$('stop').onclick=()=>action(()=>api('/api/cancel',{}));
+for(const id of ['scheduleEnabled','scheduleTime','interval','jitter'])$(id).addEventListener('input',markScheduleDirty);
+$('saveSchedule').onclick=()=>action(async()=>{await api('/api/schedule',{revision:scheduleRevision,enabled:$('scheduleEnabled').checked,time:$('scheduleTime').value,min_contact_interval_seconds:Number($('interval').value),jitter_minutes:Number($('jitter').value)});scheduleDirty=false;});
+$('results').addEventListener('click',event=>{const button=event.target.closest('[data-resolve]');if(!button)return;const resolution=button.dataset.resolve;const question=resolution==='confirmed_sent'?'确认你已在抖音中看到这条消息发送成功？':'确认你已在抖音中核实这条消息没有发出？解除暂停后，仍需手动点击执行才会发送。';if(confirm(question))action(async()=>{await api('/api/attempts/'+encodeURIComponent(button.dataset.attempt)+'/resolve',{resolution});historyKey='';});});
+$('enableService').onclick=()=>action(()=>api('/api/service',{action:'enable'}));$('disableService').onclick=()=>action(()=>api('/api/service',{action:'disable'}));
+$('exitService').onclick=()=>action(async()=>{if(!confirm('退出后台后，自动执行也会停止。确认退出？'))return;await api('/api/service',{action:'exit'});polling=false;$('serviceStatus').textContent='后台已退出。重新打开 DouyinFire 即可恢复。';});
+$('loadLogs').onclick=()=>action(async()=>{$('logs').textContent=(await api('/api/logs')).text;});
+window.addEventListener('beforeunload',event=>{if(dirty||scheduleDirty){event.preventDefault();event.returnValue='';}});
+refresh();setInterval(refresh,2500);
+</script></body></html>'''

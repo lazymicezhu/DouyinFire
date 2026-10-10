@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from douyinfire.config import ConfigError, parse_config
-from douyinfire.gui import form_payload_to_yaml
+from douyinfire.config import ContactConfig, ConfigError, config_to_dict, load_config, parse_config, save_config, stable_id
+from douyinfire.identities import group_identity
 
 
 def test_parse_config_applies_defaults() -> None:
@@ -65,7 +65,8 @@ def test_parse_config_accepts_browser_config() -> None:
         base_dir=Path("/tmp/douyinfire"),
     )
 
-    assert config.browser.backend == "cloakbrowser"
+    assert config.browser.backend == "playwright"
+    assert config.migration_warnings
     assert config.browser.run_headless is True
     assert config.browser.storage_state_path == Path("/tmp/douyinfire/data/states/main.json")
 
@@ -105,66 +106,8 @@ def test_parse_config_rejects_bad_browser_backend() -> None:
         )
 
 
-def test_form_payload_to_yaml_round_trips() -> None:
-    text = form_payload_to_yaml(
-        {
-            "data_dir": "data",
-            "log_dir": "logs",
-            "screenshot_dir": "screenshots",
-            "failure_notify_threshold": 1,
-            "browser": {
-                "backend": "cloakbrowser",
-                "run_headless": True,
-                "login_headless": False,
-                "storage_state_path": "data/states/main.json",
-            },
-            "timeouts": {
-                "home_ready_seconds": 5,
-                "message_panel_seconds": 8,
-                "contact_search_seconds": 15,
-                "input_box_seconds": 10,
-                "after_send_seconds": 2,
-            },
-            "schedule": {
-                "time": "00:05",
-                "jitter_minutes": 20,
-                "min_contact_interval_seconds": 10,
-            },
-            "users": [{"name": "main", "enabled": True, "contacts": "a | custom\nb", "message": "hello"}],
-        }
-    )
-    config = parse_config(__import__("yaml").safe_load(text))
-
-    assert config.browser.backend == "cloakbrowser"
-    assert config.users[0].contacts[0].name == "a"
-    assert config.users[0].contacts[0].profile_url == ""
-    assert config.users[0].contacts[0].message == "custom"
-    assert config.users[0].contacts[1].name == "b"
 
 
-def test_form_payload_accepts_structured_contact_rows() -> None:
-    text = form_payload_to_yaml(
-        {
-            "users": [
-                {
-                    "name": "main",
-                    "enabled": True,
-                    "contacts": [
-                        {"name": "呱唧唧呱", "message": "测试可选消息"},
-                        {"name": "朋友A", "message": ""},
-                    ],
-                    "message": "全局消息",
-                }
-            ],
-        }
-    )
-    config = parse_config(__import__("yaml").safe_load(text))
-
-    assert config.users[0].message == "全局消息"
-    assert config.users[0].contacts[0].name == "呱唧唧呱"
-    assert config.users[0].contacts[0].profile_url == ""
-    assert config.users[0].contacts[0].message == "测试可选消息"
-    assert config.users[0].contacts[1].message == ""
 
 
 def test_parse_config_rejects_bad_timeout() -> None:
@@ -190,3 +133,67 @@ def test_parse_config_rejects_bad_time() -> None:
                 "users": [{"name": "main", "contacts": ["a"], "message": "hello"}],
             }
         )
+
+
+def contacts_config(*contacts):
+    return {"users": [{"name": "synthetic account", "contacts": list(contacts)}]}
+
+
+def test_old_direct_contact_identity_and_id_are_unchanged(tmp_path):
+    raw = contacts_config({"name": "synthetic friend", "identity": "old-secUid", "future_option": True})
+    config = parse_config(raw)
+    contact = config.users[0].contacts[0]
+    assert contact.kind == "direct"
+    assert contact.identity == "old-secUid"
+    assert contact.id == stable_id("contact", "old-secUid")
+    target = tmp_path / "config" / "app.json"
+    save_config(config, target)
+    loaded = load_config(target).users[0].contacts[0]
+    assert (loaded.kind, loaded.identity, loaded.id) == ("direct", "old-secUid", contact.id)
+    assert loaded.extra == {"future_option": True}
+
+
+def test_group_and_direct_can_share_a_name_without_sharing_local_id():
+    config = parse_config(contacts_config({"name": "same name"}, {"name": "same name", "kind": "group"}))
+    direct, group = config.users[0].contacts
+    assert direct.id == stable_id("contact", "same name")
+    assert group.id != direct.id
+    assert group.identity == "" and group.profile_url == ""
+    assert config_to_dict(config)["users"][0]["contacts"][1]["kind"] == "group"
+
+
+def test_bound_group_round_trip_keeps_exact_identity_and_explicit_id(tmp_path):
+    identity = group_identity("1234567890123456789")
+    config = parse_config(contacts_config({"name": "synthetic group", "kind": "group", "identity": identity, "id": "keep-existing-id"}))
+    target = tmp_path / "config" / "app.yaml"
+    save_config(config, target)
+    contact = load_config(target).users[0].contacts[0]
+    assert (contact.kind, contact.identity, contact.id) == ("group", identity, "keep-existing-id")
+
+
+@pytest.mark.parametrize("values", [
+    {"kind": "unknown"}, {"kind": None}, {"kind": []},
+    {"kind": "group", "identity": "old-secUid"},
+    {"kind": "group", "identity": "group:YQ="},
+    {"kind": "group", "identity": " group:YQ"},
+    {"kind": "group", "identity": 1234567890123456789},
+    {"kind": "direct", "identity": group_identity("1234567890123456789")},
+    {"kind": "group", "profile_url": "https://www.douyin.com/user/synthetic"},
+])
+def test_config_rejects_invalid_contact_type_or_identity(values):
+    with pytest.raises(ConfigError):
+        parse_config(contacts_config({"name": "synthetic", **values}))
+
+
+def test_duplicate_group_identity_rejected_even_with_different_local_ids():
+    identity = group_identity("1234567890123456789")
+    with pytest.raises(ConfigError, match="contact identities"):
+        parse_config(contacts_config(
+            {"name": "group one", "kind": "group", "identity": identity, "id": "one"},
+            {"name": "group renamed", "kind": "group", "identity": identity, "id": "two"},
+        ))
+
+
+def test_contact_kind_is_appended_after_legacy_positional_fields():
+    contact = ContactConfig("old", "", "hello", "local-id", False, "old-secUid", {"future": 1})
+    assert contact.kind == "direct" and contact.extra == {"future": 1}

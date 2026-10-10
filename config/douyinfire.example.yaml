@@ -1,32 +1,30 @@
-# Copy this file to config/douyinfire.yaml and edit it locally.
+# 日常使用双击 DouyinFire.app，在网页中添加账号、登录和核实联系人。
+# 此文件供开发者参考；应用默认配置位于本机 Application Support/DouyinFire。
+schema_version: 2
 data_dir: data
 log_dir: logs
 screenshot_dir: screenshots
-headless: false
-failure_notify_threshold: 1
+headless: true
 
 schedule:
+  enabled: false
   time: "00:05"
+  timezone: "Asia/Hong_Kong"
   jitter_minutes: 20
   min_contact_interval_seconds: 10
+  catchup_minutes: 180
 
 timeouts:
-  home_ready_seconds: 5
-  message_panel_seconds: 8
-  contact_search_seconds: 15
+  home_ready_seconds: 20
+  message_panel_seconds: 15
+  contact_search_seconds: 20
   input_box_seconds: 10
-  after_send_seconds: 2
+  after_send_seconds: 10
 
 browser:
-  backend: cloakbrowser
+  backend: playwright
   run_headless: true
   login_headless: false
-  storage_state_path: data/states/main.json
 
-users:
-  - name: "main"
-    enabled: true
-    contacts:
-      - name: "联系人备注名"
-        profile_url: "https://www.douyin.com/user/..."
-    message: "续火花咯"
+# 稳定账号与联系人标识由网页中的登录检查、核实绑定操作生成。
+users: []
