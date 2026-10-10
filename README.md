@@ -14,8 +14,6 @@
 
 Mac 上的本地抖音续火花工具。双击应用，所有日常设置都在一个本地网页中完成。使用 Playwright 操作抖音网页元素，不使用像素坐标，不接入大模型。
 
-**在线体验：** [打开体验站](https://plotworkers.lazymicezhu.com/)
-
 ## 打开与首次设置
 
 1. 完成下文的本地构建后，双击 `~/Applications/DouyinFire.app`。应用会自动打开本地控制页，日常使用不需要终端。

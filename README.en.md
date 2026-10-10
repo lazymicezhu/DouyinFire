@@ -14,8 +14,6 @@
 
 A local Mac app for maintaining Douyin chat streaks. Double-click the app and manage everyday settings in a local web page. It uses Playwright to interact with Douyin web elements, without pixel coordinates or large language models.
 
-**Live demo:** [Open the demo site](https://plotworkers.lazymicezhu.com/)
-
 ## Opening the app and initial setup
 
 1. After completing the local build described below, double-click `~/Applications/DouyinFire.app`. The app opens its local control page automatically; no terminal is needed.
